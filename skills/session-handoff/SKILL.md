@@ -696,9 +696,10 @@ Phase 4 is the composition step: merge the parsed command (`MSG_TYPE`,
 the template fragments from `references/message-templates.md` into two
 strings:
 
-1. `SHORT_PROMPT` — target ~2000 characters, hard cap 2500. Self-
-   contained: works as a standalone prompt in a fresh session on any
-   machine, even one that cannot read the full artifact on disk.
+1. `SHORT_PROMPT` — length budget varies by `MSG_TYPE` (see step 4g
+   for per-type soft/hard caps). Self-contained: works as a standalone
+   prompt in a fresh session on any machine, even one that cannot read
+   the full artifact on disk.
 2. `FULL_ARTIFACT` — complete structured document with YAML frontmatter
    and every applicable Base Template section, written to disk in
    Phase 5.
@@ -828,8 +829,26 @@ the short prompt is paste-transferred.
 
 ### 4g) Short-prompt truncation priority
 
-Target: ~2000 chars. Hard cap: 2500 chars. If the rendered short
-prompt exceeds 2500 chars, reduce content in this order:
+Per-type soft/hard caps, keyed by `MSG_TYPE`:
+
+| `MSG_TYPE` | Soft cap | Hard cap |
+|---|---|---|
+| `handoff` | 2000 | 2500 |
+| `brief` | 2000 | 2500 |
+| `assign` | 3500 | 4500 |
+| `review` | 2500 | 3500 |
+| `report` | 3500 | 4500 |
+
+`handoff` and `brief` are terse status tiers — the short prompt is a
+skim; detail lives in the full artifact. `assign` and `report` are
+deliverable tiers — the short prompt IS the detailed task brief
+(multi-scenario acceptance criteria) or findings brief (evidence +
+recommendations), so it gets a larger budget. `review` sits between
+them. Soft caps are the targeted body length; hard caps are the
+ceiling at which truncation priority kicks in.
+
+If the rendered short prompt exceeds the type's hard cap, reduce
+content in this order:
 
 1. **Cut Plan reference detail first.** Keep the path(s) only; drop
    any inlined plan excerpts, title lines, or multi-plan notes.
@@ -849,9 +868,18 @@ Always keep, in every truncation state:
 - Warnings section.
 - The artifact-pointer line.
 
-If after all three cuts the prompt still exceeds 2500 chars, stop
-cutting and emit the prompt as-is. The receiving agent can read the
-full artifact on disk. Do NOT silently truncate mid-sentence.
+If after all three cuts the prompt still exceeds the type's hard cap,
+stop cutting and emit the prompt as-is. The receiving agent can read
+the full artifact on disk. Do NOT silently truncate mid-sentence.
+
+**Worked case (assign, within soft cap, no truncation).** A 3200-char
+`/session-handoff assign qa` short prompt carrying a 4-scenario
+acceptance checklist and resource pointers sits under `assign`'s 3500
+soft cap — emit as-is. The same 3200 chars under the old universal
+2500 cap would have tripped truncation even though every byte is
+load-bearing task detail (Plan reference and Status are already in
+the secondary-only list for `assign` per step 4d, so there's nothing
+below the Task description to cut). Per-type caps resolve this.
 
 ### 4h) Assemble the full artifact
 
