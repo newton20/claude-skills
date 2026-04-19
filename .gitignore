@@ -1,0 +1,14 @@
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/
+.idea/
+
+# Secrets (don't accidentally commit local creds)
+.env
+.env.local
+api.txt
+
+# Node
+node_modules/

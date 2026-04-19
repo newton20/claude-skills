@@ -1,0 +1,47 @@
+# Orchestration manifest for session-handoff Units 3, 4, 5.
+# Sequential continuation of manifest.yaml (which ran Units 1 + 2).
+# Reuses the same prompts/ and signals/ directories.
+#
+# Source plan (read from claude-skills repo root):
+#   docs/plans/2026-04-15-001-feat-session-handoff-skill-plan.md
+#
+# Prerequisites:
+#   signals/phase-0-impl-complete.md (Unit 1, already done)
+#   signals/phase-1-impl-complete.md (Unit 2, already done)
+#
+# Run from agent-orchestrator\prototype\:
+#   node orchestrate-prototype.js C:\Users\dunliu\projects\claude-skills\docs\orchestration\manifest-units-3-5.yaml
+
+name: session-handoff-unit3-5
+
+workdir: ../..
+
+launcher:
+  shell: powershell
+  binary: agency claude
+  auto_mode_flag: --enable-auto-mode
+
+phases:
+  - id: phase-2-unit3
+    title: "Unit 3 — sanitization pipeline"
+    timeout_minutes: 120
+    agent:
+      role: impl
+      prompt_file: prompts/phase-2-impl.md
+    completion_signal: signals/phase-2-impl-complete.md
+
+  - id: phase-3-unit4
+    title: "Unit 4 — two-tier output + artifact management"
+    timeout_minutes: 120
+    agent:
+      role: impl
+      prompt_file: prompts/phase-3-impl.md
+    completion_signal: signals/phase-3-impl-complete.md
+
+  - id: phase-4-unit5
+    title: "Unit 5 — example output + quickstart docs"
+    timeout_minutes: 90
+    agent:
+      role: impl
+      prompt_file: prompts/phase-4-impl.md
+    completion_signal: signals/phase-4-impl-complete.md

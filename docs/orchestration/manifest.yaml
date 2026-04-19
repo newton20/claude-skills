@@ -1,0 +1,40 @@
+# Orchestration manifest for the session-handoff skill build.
+# Tests the agent-orchestrator Unit 0 prototype against a real 2-phase project.
+# Only covers Units 1 and 2 of the plan — Units 3-5 run separately after we
+# learn from this pass.
+#
+# Source plan (read from claude-skills repo root):
+#   docs/plans/2026-04-15-001-feat-session-handoff-skill-plan.md
+#
+# Run from agent-orchestrator\prototype\ (absolute path to this manifest):
+#   node orchestrate-prototype.js C:\Users\dunliu\projects\claude-skills\docs\orchestration\manifest.yaml
+
+name: session-handoff-unit1-unit2
+
+# Spawned tabs start in the repo root (two levels above this manifest).
+# Relative to this file: ../../ → C:\Users\dunliu\projects\claude-skills\
+workdir: ../..
+
+launcher:
+  shell: powershell
+  binary: agency claude
+  auto_mode_flag: --enable-auto-mode
+
+# Note: prompt_file and completion_signal paths are resolved relative to
+# THIS manifest's directory (docs/orchestration/), not the workdir.
+phases:
+  - id: phase-0-unit1
+    title: "Unit 1 — skill scaffold + state gathering"
+    timeout_minutes: 120
+    agent:
+      role: impl
+      prompt_file: prompts/phase-0-impl.md
+    completion_signal: signals/phase-0-impl-complete.md
+
+  - id: phase-1-unit2
+    title: "Unit 2 — command parsing + role templates"
+    timeout_minutes: 120
+    agent:
+      role: impl
+      prompt_file: prompts/phase-1-impl.md
+    completion_signal: signals/phase-1-impl-complete.md
