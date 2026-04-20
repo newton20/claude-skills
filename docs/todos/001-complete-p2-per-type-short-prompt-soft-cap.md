@@ -1,5 +1,5 @@
 ---
-status: ready
+status: complete
 priority: p2
 issue_id: "001"
 tags: [session-handoff, phase-4, ux, truncation]
@@ -199,6 +199,66 @@ compiled parser. The change is to the spec the LLM follows at runtime.
 - Clipboard capacity isn't a real constraint at 3–5KB on modern
   Windows/Mac/Linux — the "fits in a typical clipboard" line in the
   prerequisites block is overly cautious.
+
+### 2026-04-19 - Implementation (Option 1)
+
+**By:** Claude Opus 4.7 (claude-skills impl session, branch
+`feat/todo-001-per-type-soft-cap`)
+
+**Actions:**
+- Replaced the single-number soft/hard cap in `skills/session-handoff/
+  SKILL.md` Phase 4g with a per-type table keyed by `MSG_TYPE`
+  (handoff/brief 2000/2500, assign/report 3500/4500, review 2500/3500).
+- Added a rationale paragraph explaining the terse-vs-deliverable tier
+  split.
+- Added a "Worked case (assign, within soft cap, no truncation)"
+  annotation demonstrating the 3200-char assign scenario that falls
+  under the new 3500 soft cap.
+- Updated the Phase 4 intro (line 699) to point at step 4g for the
+  per-type budgets rather than stating a single universal target.
+- Updated `references/message-templates.md` composition algorithm step
+  7 to delegate cap numbers to SKILL.md Phase 4g, keeping the
+  truncation priority rules inline.
+- Resynced `~/.claude/skills/session-handoff/SKILL.md` and its
+  `references/message-templates.md` from the repo copies; verified
+  with diff.
+- Renamed this todo `001-ready-*` → `001-complete-*`, flipped
+  frontmatter `status: ready` → `status: complete`.
+
+**Learnings:**
+- Truncation priority + always-keep list needed no changes — the cap
+  numbers are the only knob that's type-sensitive.
+- `references/message-templates.md` carried a stale "Target ≤ 2500
+  chars" line that would have drifted out of sync on every future
+  cap change. Delegating to SKILL.md keeps numbers in one place.
+
+### 2026-04-20 - Sanity verification (from PR #1 code review)
+
+**By:** Claude Opus 4.7 (ce-code-review walkthrough, finding #2)
+
+**Actions:**
+- Invoked `/session-handoff assign impl -- <long 4-scenario QA task>`
+  with a representative multi-scenario task description, acceptance
+  criteria, and resource pointers (~1200 chars of task detail).
+- Composed the short prompt following Phase 4 spec
+  (`short_sections = [preamble] + assign primary (Task description,
+  Scope, Acceptance criteria, Resources) + [Warnings, Artifact
+  pointer]`) and measured byte count.
+- Result: **2287 bytes** (well under `assign`'s new 3500 soft cap).
+  No truncation priority would fire; emit-as-is path taken.
+
+**Acceptance criterion satisfied:**
+- [x] Sanity invocation of the updated skill produces the expected
+  behavior: short prompt emitted without a truncation warning, within
+  the new `assign` per-type cap.
+
+**Note:** Real-world assign tasks can grow larger than the test case
+(the original 2026-04-19 trigger in agent-orchestration-repo was
+3129 bytes). Both sit comfortably under 3500 soft and 4500 hard, which
+is exactly the motivation for the per-type caps. If a pathological
+case does exceed 4500, Phase 4g's unchanged truncation priority fires
+cleanly (Plan reference → Status → Decisions body), or the prompt
+emits as-is and the full artifact carries detail.
 
 ---
 

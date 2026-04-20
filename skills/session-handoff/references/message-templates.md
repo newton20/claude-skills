@@ -289,10 +289,12 @@ compose deterministically.
      else:
         emit section
 6. Thread INSTRUCTIONS per override.instructions_rule.
-7. Short prompt: emit short_sections. Target ≤ 2500 chars (Unit 4
-   truncation priority applies: cut Plan reference detail first, then
-   Status details; always keep preamble, branch/SHA, instructions,
-   artifact pointer).
+7. Short prompt: emit short_sections. Length budget is per-type —
+   see SKILL.md Phase 4 step 4g for the soft/hard caps keyed by
+   `MSG_TYPE`. Unit 4 truncation priority applies when the hard cap is
+   exceeded: cut Plan reference detail first, then Status details,
+   then Decisions / Open questions body; always keep preamble,
+   branch/SHA, instructions, artifact pointer.
 8. Full artifact: emit full_sections with YAML frontmatter (schema_version,
    MSG_TYPE, TARGET_ROLE, branch, sha, timestamp, source_session_id,
    warnings[]).
