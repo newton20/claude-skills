@@ -232,6 +232,34 @@ compiled parser. The change is to the spec the LLM follows at runtime.
   chars" line that would have drifted out of sync on every future
   cap change. Delegating to SKILL.md keeps numbers in one place.
 
+### 2026-04-20 - Sanity verification (from PR #1 code review)
+
+**By:** Claude Opus 4.7 (ce-code-review walkthrough, finding #2)
+
+**Actions:**
+- Invoked `/session-handoff assign impl -- <long 4-scenario QA task>`
+  with a representative multi-scenario task description, acceptance
+  criteria, and resource pointers (~1200 chars of task detail).
+- Composed the short prompt following Phase 4 spec
+  (`short_sections = [preamble] + assign primary (Task description,
+  Scope, Acceptance criteria, Resources) + [Warnings, Artifact
+  pointer]`) and measured byte count.
+- Result: **2287 bytes** (well under `assign`'s new 3500 soft cap).
+  No truncation priority would fire; emit-as-is path taken.
+
+**Acceptance criterion satisfied:**
+- [x] Sanity invocation of the updated skill produces the expected
+  behavior: short prompt emitted without a truncation warning, within
+  the new `assign` per-type cap.
+
+**Note:** Real-world assign tasks can grow larger than the test case
+(the original 2026-04-19 trigger in agent-orchestration-repo was
+3129 bytes). Both sit comfortably under 3500 soft and 4500 hard, which
+is exactly the motivation for the per-type caps. If a pathological
+case does exceed 4500, Phase 4g's unchanged truncation priority fires
+cleanly (Plan reference → Status → Decisions body), or the prompt
+emits as-is and the full artifact carries detail.
+
 ---
 
 ## Notes
