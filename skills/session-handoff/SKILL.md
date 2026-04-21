@@ -979,6 +979,88 @@ written to disk, clipboard, or stdout, remove every internal
 Provenance tracking is a Phase 3/4 implementation detail, not part of
 the emitted output.
 
+### 4j) Placeholder lint
+
+Callers pass free-form text into `INSTRUCTIONS`. That text can
+contain placeholder-shaped tokens (`<dir-with-spaces>`,
+`<REPO_ROOT>`, `<path-here>`) meant to be substituted by the
+receiving agent. When such tokens land inside a fenced code block
+in the assembled output, a receiving agent copying the command
+verbatim will either run it with the literal text (usually failing)
+or strip the `<...>` as a shell redirection and run it empty
+(silently broken). Neither is the caller's intent. The lint
+catches these at send-time and emits a canonical warning so the
+receiving agent sees explicit instruction to substitute.
+
+This step runs at Phase 5 time, AFTER Phase 3 sanitization (so
+`[REDACTED -- see foo]` tokens do not shape-match a placeholder)
+and AFTER step 4i provenance-strip (so `origin=...` markers are
+already gone), and BEFORE Phase 5 output. In other words, the lint
+reads the final, shipping text and flags what the receiver will
+actually see.
+
+**Scan pattern.** Apply the regex `<[A-Za-z][A-Za-z0-9_-]*>` to
+the CONTENT of every fenced code block (delimited by triple
+backticks ` ``` ` or triple tildes `~~~`) in both `SHORT_PROMPT`
+and `FULL_ARTIFACT`. Do NOT scan prose text outside code fences —
+placeholders in prose are natural and readable (readers interpret
+`<some-path>` as a slot automatically). The lint only targets the
+copy-paste-execute path.
+
+**Whitelist (pass without warning).** The following tokens are
+common literal HTML/Markdown that legitimately appear inside code
+fences and are not placeholder slots:
+
+- HTML tags: `<html>`, `<body>`, `<head>`, `<title>`, `<br>`,
+  `<hr>`, `<p>`, `<div>`, `<span>`, `<a>`, `<img>`, `<ul>`,
+  `<ol>`, `<li>`, `<code>`, `<pre>`, `<em>`, `<strong>`.
+- Self-closing variants of the same set (e.g. `<br/>`, `<img/>`)
+  match the same regex and are whitelisted alongside.
+
+Match the whitelist case-insensitively. Tokens inside SGML/HTML
+comments `<!-- ... -->` are also ignored — a `<!--` open tag does
+not match the regex anyway (starts with `!`, not `[A-Za-z]`), but
+document the intent for future maintainers.
+
+**Warning shape.** For every non-whitelisted hit, append one
+warning to the `warnings:` list using the canonical 3-segment
+shape Phase 1 / Phase 2 / Phase 3 established:
+
+```
+[warning: placeholder not resolved -- "<token>" appears inside a code fence -- receiving agent must substitute before executing]
+```
+
+Replace `<token>` with the exact matched text (keep the angle
+brackets). Deduplicate: if the same token appears multiple times
+in the same output tier, emit a single warning for it and do not
+repeat. If the same token appears in BOTH `SHORT_PROMPT` and
+`FULL_ARTIFACT`, emit only one warning — the two tiers share a
+warnings list.
+
+**Invariant.** The lint never MODIFIES the output. It only
+appends warnings. The placeholder text itself passes through
+unchanged so the caller's intent is preserved and the receiving
+agent can act on the warning.
+
+**Worked case.** Caller runs:
+
+```
+/session-handoff assign impl -- Run the smoke test: `node spawn.js --workdir "<dir-with-spaces>"`
+```
+
+The assembled `SHORT_PROMPT` contains the backticked command
+block with `"<dir-with-spaces>"` inside. The lint scans, matches
+`<dir-with-spaces>` against the regex, does not match the
+whitelist, and appends:
+
+```
+[warning: placeholder not resolved -- "<dir-with-spaces>" appears inside a code fence -- receiving agent must substitute before executing]
+```
+
+The receiving agent now sees both the command and the warning,
+knows the placeholder is a slot (not a typo or an empty string),
+and substitutes before executing.
+
 ---
 
 ## Phase 5: Output
@@ -1008,6 +1090,15 @@ so the receiving agent knows the output was not scrubbed.
 
 Apply step 4i to both sanitized strings. Nothing that reaches the
 user should contain `origin=...` text.
+
+### 5.2.5) Placeholder lint
+
+Apply step 4j to both sanitized, provenance-stripped strings. Scan
+fenced code blocks for placeholder-shaped tokens, skip the
+whitelist, and append a canonical warning per non-whitelisted hit.
+The lint never modifies the output — it only augments the
+`warnings:` list. See step 4j for the full regex, whitelist, and
+warning shape.
 
 ### 5.3) Ensure the artifact directory exists
 
