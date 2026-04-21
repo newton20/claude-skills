@@ -872,14 +872,56 @@ If after all three cuts the prompt still exceeds the type's hard cap,
 stop cutting and emit the prompt as-is. The receiving agent can read
 the full artifact on disk. Do NOT silently truncate mid-sentence.
 
-**Worked case (assign, within soft cap, no truncation).** A 3200-char
-`/session-handoff assign qa` short prompt carrying a 4-scenario
+**Worked case 1 (assign, within soft cap, no truncation).** A 3200-
+char `/session-handoff assign qa` short prompt carrying a 4-scenario
 acceptance checklist and resource pointers sits under `assign`'s 3500
 soft cap — emit as-is. The same 3200 chars under the old universal
 2500 cap would have tripped truncation even though every byte is
 load-bearing task detail (Plan reference and Status are already in
 the secondary-only list for `assign` per step 4d, so there's nothing
 below the Task description to cut). Per-type caps resolve this.
+
+**Worked case 2 (assign, exceeds hard cap, truncation + emit-as-is).**
+A 4700-char `/session-handoff assign impl` short prompt (large
+INSTRUCTIONS seeded into Task description, plus auto-derived Scope,
+Acceptance criteria, and Resources from a linked plan) exceeds the
+4500 hard cap. Tier 1 (cut Plan reference detail) and tier 2 (cut
+Status details) are no-ops because both sections are secondary-only
+for `assign` per step 4d. Tier 3 (cut Decisions / Open questions
+body) is also a no-op for the same reason. Every cut tier hits a
+section that is not in `assign`'s primary list, so the prompt body
+does not shrink. Per the rule above, stop cutting and emit as-is —
+do NOT silently truncate the Task description mid-sentence. The
+full artifact on disk carries the complete detail; the receiving
+agent reads it via the artifact-pointer line.
+
+**Worked case 3 (review, exceeds hard cap, tier 3 fires directly).**
+A 3600-char `/session-handoff review reviewer -- check PR #42` short
+prompt (large Artifact-to-review block + extensive Review criteria +
+appended Specific questions) exceeds the 3500 `review` hard cap.
+Tier 1 (Plan reference) and tier 2 (Status details) are both no-ops
+because `review`'s primary sections are Artifact to review → Review
+criteria → Specific questions (Plan reference and Status are
+secondary per step 4d). Tier 3 (cut Decisions / Open questions
+body) also has no body for `review` because those sections are not
+in its primary list. Result: no cuts apply, emit as-is.
+
+**Worked case 4 (report, between soft and hard, emit as-is).** A
+3800-char `/session-handoff report coord` short prompt carrying a
+PASS/FAIL verdict, an Evidence block quoting CI log excerpts, and
+detailed Recommendations sits between `report`'s 3500 soft cap and
+4500 hard cap. No truncation fires — soft caps are the targeted
+length, not the enforcement threshold. Emit as-is. This is the
+transition-zone behavior: soft-cap overages are diagnostic (the
+prompt is longer than ideal) but not corrective (no cuts applied).
+
+Summary: across all five `MSG_TYPE` values, the three truncation
+tiers cut from sections that are either primary for `handoff` / `brief`
+(where truncation works as designed) or secondary-only for `assign`
+/ `review` / `report` (where tiers are no-ops by construction). This
+is the load-bearing invariant of the per-type caps: raising the cap
+for deliverable types works because there is nothing below the
+load-bearing content to cut.
 
 ### 4h) Assemble the full artifact
 
@@ -937,6 +979,133 @@ written to disk, clipboard, or stdout, remove every internal
 Provenance tracking is a Phase 3/4 implementation detail, not part of
 the emitted output.
 
+### 4j) Placeholder lint
+
+Callers pass free-form text into `INSTRUCTIONS`. That text can
+contain placeholder-shaped tokens (`<dir-with-spaces>`,
+`<REPO_ROOT>`, `<path-here>`) meant to be substituted by the
+receiving agent. When such tokens land inside a fenced code block
+in the assembled output, a receiving agent copying the command
+verbatim will either run it with the literal text (usually failing)
+or strip the `<...>` as a shell redirection and run it empty
+(silently broken). Neither is the caller's intent. The lint
+catches these at send-time and emits a canonical warning so the
+receiving agent sees explicit instruction to substitute.
+
+This step runs at Phase 5 time, AFTER Phase 3 sanitization (so
+`[REDACTED -- see foo]` tokens do not shape-match a placeholder)
+and AFTER step 4i provenance-strip (so `origin=...` markers are
+already gone), and BEFORE Phase 5 output. In other words, the lint
+reads the final, shipping text and flags what the receiver will
+actually see.
+
+**Scan pattern.** Apply the regex `<[A-Za-z][A-Za-z0-9_./ -]*>`
+to the CONTENT of every code segment in both `SHORT_PROMPT` and
+`FULL_ARTIFACT`. The character class after the leading letter
+accepts identifier characters plus `/`, `.`, and space — the
+three delimiters that appear in the most common real-world
+placeholder shapes (`<path/to/repo>`, `<config.json>`, `<repo
+root>`). Characters outside this class (e.g., `"`, `=`, `:`)
+correctly exclude attribute-bearing HTML like `<a href="...">`
+from the match without requiring a broader whitelist. A code
+segment is any of:
+
+- A fenced code block delimited by triple backticks (` ``` `) or
+  triple tildes (`~~~`).
+- An inline code span delimited by a run of one or more backticks
+  of matching length (Markdown: `` `code` ``, `` ``code`` ``, etc.).
+  Inline spans are where single-line command examples most often
+  live when threaded into Task description or Specific questions
+  — they are the exact case the lint exists to catch.
+
+Do NOT scan prose text outside code segments — placeholders in
+prose are natural and readable (readers interpret `<some-path>`
+as a slot automatically). The lint only targets the
+copy-paste-execute path.
+
+**Whitelist (pass without warning).** The following tokens are
+common literal HTML/Markdown that legitimately appear inside code
+fences and are not placeholder slots:
+
+- HTML tags: `<html>`, `<body>`, `<head>`, `<title>`, `<br>`,
+  `<hr>`, `<p>`, `<div>`, `<span>`, `<a>`, `<img>`, `<ul>`,
+  `<ol>`, `<li>`, `<code>`, `<pre>`, `<em>`, `<strong>`.
+- Self-closing variants of the same set (e.g. `<br/>`, `<img/>`)
+  match the same regex and are whitelisted alongside.
+
+Match the whitelist case-insensitively. Tokens inside SGML/HTML
+comments `<!-- ... -->` are also ignored — a `<!--` open tag does
+not match the regex anyway (starts with `!`, not `[A-Za-z]`), but
+document the intent for future maintainers.
+
+**Warning shape.** For every non-whitelisted hit, append one
+warning to the `warnings:` list using the canonical 3-segment
+shape Phase 1 / Phase 2 / Phase 3 established:
+
+```
+[warning: placeholder not resolved -- "<token>" appears inside a code segment -- receiving agent must substitute before executing]
+```
+
+Replace `<token>` with the exact matched text (keep the angle
+brackets). Deduplicate: if the same token appears multiple times
+in the same output tier, emit a single warning for it and do not
+repeat. If the same token appears in BOTH `SHORT_PROMPT` and
+`FULL_ARTIFACT`, emit only one warning — the two tiers share a
+warnings list.
+
+**Re-render the warnings sections after appending.** Step 4h
+renders the YAML `warnings:` frontmatter block (in
+`FULL_ARTIFACT`) and the body `## Warnings` section (in both
+tiers) at assembly time, BEFORE the lint runs. A warning
+appended here does NOT automatically propagate to those already-
+rendered strings. To close that gap, the lint MUST re-render
+the warnings sections in both output strings after appending
+any new warning:
+
+1. Rebuild the YAML `warnings:` block in `FULL_ARTIFACT` per
+   the field order and empty-state rule in step 4h — replace
+   the existing block inline (between the `---` fences)
+   rather than emitting a second block.
+2. Rebuild the body `## Warnings` section in BOTH `SHORT_PROMPT`
+   and `FULL_ARTIFACT` — render every current warning as a
+   bullet in the canonical list.
+
+If the lint appends zero warnings, SKIP the re-render (no state
+changed; avoid rewriting identical bytes). If the lint appends
+one or more, ALWAYS re-render, even if only one tier contained
+the matching placeholder — the warnings list is shared across
+tiers (see the deduplication rule above), so both tiers need the
+updated section to stay consistent.
+
+**Invariant.** The placeholder text ITSELF passes through
+unchanged — the caller's intent is preserved and the receiving
+agent can act on the warning. Only the `warnings:` frontmatter
+and body `## Warnings` section are rebuilt, and only to reflect
+the updated list.
+
+**Worked case.** Caller runs:
+
+```
+/session-handoff assign impl -- Run the smoke test: `node spawn.js --workdir "<dir-with-spaces>"`
+```
+
+The assembled `SHORT_PROMPT` contains the command inside a
+single-backtick inline span (`` `node spawn.js --workdir
+"<dir-with-spaces>"` ``). The lint scans the inline span's
+content, matches `<dir-with-spaces>` against the regex, does
+not match the whitelist, and appends:
+
+```
+[warning: placeholder not resolved -- "<dir-with-spaces>" appears inside a code segment -- receiving agent must substitute before executing]
+```
+
+The lint then re-renders the `warnings:` frontmatter block and
+the body `## Warnings` section in both output tiers so the new
+warning reaches the emitted artifact. The receiving agent now
+sees both the command and the warning, knows the placeholder is
+a slot (not a typo or an empty string), and substitutes before
+executing.
+
 ---
 
 ## Phase 5: Output
@@ -966,6 +1135,19 @@ so the receiving agent knows the output was not scrubbed.
 
 Apply step 4i to both sanitized strings. Nothing that reaches the
 user should contain `origin=...` text.
+
+### 5.2.5) Placeholder lint
+
+Apply step 4j to both sanitized, provenance-stripped strings.
+Scan every code segment (fenced code blocks AND inline code
+spans) for placeholder-shaped tokens, skip the whitelist, and
+append a canonical warning per non-whitelisted hit. If any
+warnings were appended, re-render the YAML `warnings:`
+frontmatter block in `FULL_ARTIFACT` and the body `## Warnings`
+section in BOTH tiers so the newly-added warnings reach the
+emitted output. Placeholder tokens themselves pass through
+unchanged. See step 4j for the full regex, whitelist, warning
+shape, and re-render contract.
 
 ### 5.3) Ensure the artifact directory exists
 
