@@ -999,9 +999,16 @@ already gone), and BEFORE Phase 5 output. In other words, the lint
 reads the final, shipping text and flags what the receiver will
 actually see.
 
-**Scan pattern.** Apply the regex `<[A-Za-z][A-Za-z0-9_-]*>` to
-the CONTENT of every code segment in both `SHORT_PROMPT` and
-`FULL_ARTIFACT`. A code segment is any of:
+**Scan pattern.** Apply the regex `<[A-Za-z][A-Za-z0-9_./ -]*>`
+to the CONTENT of every code segment in both `SHORT_PROMPT` and
+`FULL_ARTIFACT`. The character class after the leading letter
+accepts identifier characters plus `/`, `.`, and space — the
+three delimiters that appear in the most common real-world
+placeholder shapes (`<path/to/repo>`, `<config.json>`, `<repo
+root>`). Characters outside this class (e.g., `"`, `=`, `:`)
+correctly exclude attribute-bearing HTML like `<a href="...">`
+from the match without requiring a broader whitelist. A code
+segment is any of:
 
 - A fenced code block delimited by triple backticks (` ``` `) or
   triple tildes (`~~~`).
