@@ -1,5 +1,5 @@
 ---
-status: ready
+status: complete
 priority: p3
 issue_id: "002"
 tags: [session-handoff, phase-4, worked-examples, documentation]
@@ -183,3 +183,42 @@ leaves the transition-zone + review-tier-3 gaps for a later iteration.
   assign/report (only at 4500+), so a worked case becomes the only
   way a future maintainer sees the fallback prose is actually
   checked.
+
+### 2026-04-20 - Implementation (Option 2)
+
+**By:** Claude Opus 4.7 (ce-work session, branch
+`feat/todos-002-003-session-handoff-polish`)
+
+**Actions:**
+- Renamed the existing worked case in Phase 4g to "Worked case 1"
+  and added three new worked cases after it:
+  - **Case 2 — assign at 4700 chars (exceeds 4500 hard cap).**
+    Demonstrates that all three truncation tiers are no-ops for
+    `assign`'s primary sections per step 4d, so the rule is
+    "emit as-is" rather than silent mid-sentence truncation.
+  - **Case 3 — review at 3600 chars (exceeds 3500 hard cap).**
+    Same structural argument for `review`: primary sections
+    (Artifact to review / Review criteria / Specific questions)
+    are not in the truncation-tier cut list, so all cuts no-op.
+  - **Case 4 — report at 3800 chars (between 3500 soft and 4500
+    hard).** Illustrates the transition-zone: soft-cap overages
+    are diagnostic, not corrective. No cuts fire.
+- Added a summary paragraph after the four cases articulating the
+  load-bearing invariant: raising caps for deliverable types works
+  *because* there is nothing below the load-bearing content to
+  cut. This is the same insight the three new cases demonstrate
+  by example; the summary surfaces it explicitly.
+- Resynced `~/.claude/skills/session-handoff/SKILL.md` from repo
+  copy; verified via `diff`.
+
+**Acceptance criteria:**
+- [x] Phase 4g includes a worked case demonstrating emit-as-is at
+  the new hard cap (covered by Case 2).
+- [x] Worked cases for all three transition states across
+  representative message types (at hard cap: Cases 2 + 3;
+  between soft and hard: Case 4; at or under soft cap: Case 1
+  from todo 001).
+- [x] Review-type worked case illustrates that all truncation
+  tiers are no-ops for that type (Case 3).
+- [x] Installed copy resynced.
+- [ ] Commit + push pending (will land with todo 003 in same PR).

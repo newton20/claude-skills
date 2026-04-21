@@ -872,14 +872,56 @@ If after all three cuts the prompt still exceeds the type's hard cap,
 stop cutting and emit the prompt as-is. The receiving agent can read
 the full artifact on disk. Do NOT silently truncate mid-sentence.
 
-**Worked case (assign, within soft cap, no truncation).** A 3200-char
-`/session-handoff assign qa` short prompt carrying a 4-scenario
+**Worked case 1 (assign, within soft cap, no truncation).** A 3200-
+char `/session-handoff assign qa` short prompt carrying a 4-scenario
 acceptance checklist and resource pointers sits under `assign`'s 3500
 soft cap — emit as-is. The same 3200 chars under the old universal
 2500 cap would have tripped truncation even though every byte is
 load-bearing task detail (Plan reference and Status are already in
 the secondary-only list for `assign` per step 4d, so there's nothing
 below the Task description to cut). Per-type caps resolve this.
+
+**Worked case 2 (assign, exceeds hard cap, truncation + emit-as-is).**
+A 4700-char `/session-handoff assign impl` short prompt (large
+INSTRUCTIONS seeded into Task description, plus auto-derived Scope,
+Acceptance criteria, and Resources from a linked plan) exceeds the
+4500 hard cap. Tier 1 (cut Plan reference detail) and tier 2 (cut
+Status details) are no-ops because both sections are secondary-only
+for `assign` per step 4d. Tier 3 (cut Decisions / Open questions
+body) is also a no-op for the same reason. Every cut tier hits a
+section that is not in `assign`'s primary list, so the prompt body
+does not shrink. Per the rule above, stop cutting and emit as-is —
+do NOT silently truncate the Task description mid-sentence. The
+full artifact on disk carries the complete detail; the receiving
+agent reads it via the artifact-pointer line.
+
+**Worked case 3 (review, exceeds hard cap, tier 3 fires directly).**
+A 3600-char `/session-handoff review reviewer -- check PR #42` short
+prompt (large Artifact-to-review block + extensive Review criteria +
+appended Specific questions) exceeds the 3500 `review` hard cap.
+Tier 1 (Plan reference) and tier 2 (Status details) are both no-ops
+because `review`'s primary sections are Artifact to review → Review
+criteria → Specific questions (Plan reference and Status are
+secondary per step 4d). Tier 3 (cut Decisions / Open questions
+body) also has no body for `review` because those sections are not
+in its primary list. Result: no cuts apply, emit as-is.
+
+**Worked case 4 (report, between soft and hard, emit as-is).** A
+3800-char `/session-handoff report coord` short prompt carrying a
+PASS/FAIL verdict, an Evidence block quoting CI log excerpts, and
+detailed Recommendations sits between `report`'s 3500 soft cap and
+4500 hard cap. No truncation fires — soft caps are the targeted
+length, not the enforcement threshold. Emit as-is. This is the
+transition-zone behavior: soft-cap overages are diagnostic (the
+prompt is longer than ideal) but not corrective (no cuts applied).
+
+Summary: across all five `MSG_TYPE` values, the three truncation
+tiers cut from sections that are either primary for `handoff` / `brief`
+(where truncation works as designed) or secondary-only for `assign`
+/ `review` / `report` (where tiers are no-ops by construction). This
+is the load-bearing invariant of the per-type caps: raising the cap
+for deliverable types works because there is nothing below the
+load-bearing content to cut.
 
 ### 4h) Assemble the full artifact
 
