@@ -1000,11 +1000,20 @@ reads the final, shipping text and flags what the receiver will
 actually see.
 
 **Scan pattern.** Apply the regex `<[A-Za-z][A-Za-z0-9_-]*>` to
-the CONTENT of every fenced code block (delimited by triple
-backticks ` ``` ` or triple tildes `~~~`) in both `SHORT_PROMPT`
-and `FULL_ARTIFACT`. Do NOT scan prose text outside code fences —
-placeholders in prose are natural and readable (readers interpret
-`<some-path>` as a slot automatically). The lint only targets the
+the CONTENT of every code segment in both `SHORT_PROMPT` and
+`FULL_ARTIFACT`. A code segment is any of:
+
+- A fenced code block delimited by triple backticks (` ``` `) or
+  triple tildes (`~~~`).
+- An inline code span delimited by a run of one or more backticks
+  of matching length (Markdown: `` `code` ``, `` ``code`` ``, etc.).
+  Inline spans are where single-line command examples most often
+  live when threaded into Task description or Specific questions
+  — they are the exact case the lint exists to catch.
+
+Do NOT scan prose text outside code segments — placeholders in
+prose are natural and readable (readers interpret `<some-path>`
+as a slot automatically). The lint only targets the
 copy-paste-execute path.
 
 **Whitelist (pass without warning).** The following tokens are
@@ -1027,7 +1036,7 @@ warning to the `warnings:` list using the canonical 3-segment
 shape Phase 1 / Phase 2 / Phase 3 established:
 
 ```
-[warning: placeholder not resolved -- "<token>" appears inside a code fence -- receiving agent must substitute before executing]
+[warning: placeholder not resolved -- "<token>" appears inside a code segment -- receiving agent must substitute before executing]
 ```
 
 Replace `<token>` with the exact matched text (keep the angle
@@ -1037,10 +1046,35 @@ repeat. If the same token appears in BOTH `SHORT_PROMPT` and
 `FULL_ARTIFACT`, emit only one warning — the two tiers share a
 warnings list.
 
-**Invariant.** The lint never MODIFIES the output. It only
-appends warnings. The placeholder text itself passes through
-unchanged so the caller's intent is preserved and the receiving
-agent can act on the warning.
+**Re-render the warnings sections after appending.** Step 4h
+renders the YAML `warnings:` frontmatter block (in
+`FULL_ARTIFACT`) and the body `## Warnings` section (in both
+tiers) at assembly time, BEFORE the lint runs. A warning
+appended here does NOT automatically propagate to those already-
+rendered strings. To close that gap, the lint MUST re-render
+the warnings sections in both output strings after appending
+any new warning:
+
+1. Rebuild the YAML `warnings:` block in `FULL_ARTIFACT` per
+   the field order and empty-state rule in step 4h — replace
+   the existing block inline (between the `---` fences)
+   rather than emitting a second block.
+2. Rebuild the body `## Warnings` section in BOTH `SHORT_PROMPT`
+   and `FULL_ARTIFACT` — render every current warning as a
+   bullet in the canonical list.
+
+If the lint appends zero warnings, SKIP the re-render (no state
+changed; avoid rewriting identical bytes). If the lint appends
+one or more, ALWAYS re-render, even if only one tier contained
+the matching placeholder — the warnings list is shared across
+tiers (see the deduplication rule above), so both tiers need the
+updated section to stay consistent.
+
+**Invariant.** The placeholder text ITSELF passes through
+unchanged — the caller's intent is preserved and the receiving
+agent can act on the warning. Only the `warnings:` frontmatter
+and body `## Warnings` section are rebuilt, and only to reflect
+the updated list.
 
 **Worked case.** Caller runs:
 
@@ -1048,18 +1082,22 @@ agent can act on the warning.
 /session-handoff assign impl -- Run the smoke test: `node spawn.js --workdir "<dir-with-spaces>"`
 ```
 
-The assembled `SHORT_PROMPT` contains the backticked command
-block with `"<dir-with-spaces>"` inside. The lint scans, matches
-`<dir-with-spaces>` against the regex, does not match the
-whitelist, and appends:
+The assembled `SHORT_PROMPT` contains the command inside a
+single-backtick inline span (`` `node spawn.js --workdir
+"<dir-with-spaces>"` ``). The lint scans the inline span's
+content, matches `<dir-with-spaces>` against the regex, does
+not match the whitelist, and appends:
 
 ```
-[warning: placeholder not resolved -- "<dir-with-spaces>" appears inside a code fence -- receiving agent must substitute before executing]
+[warning: placeholder not resolved -- "<dir-with-spaces>" appears inside a code segment -- receiving agent must substitute before executing]
 ```
 
-The receiving agent now sees both the command and the warning,
-knows the placeholder is a slot (not a typo or an empty string),
-and substitutes before executing.
+The lint then re-renders the `warnings:` frontmatter block and
+the body `## Warnings` section in both output tiers so the new
+warning reaches the emitted artifact. The receiving agent now
+sees both the command and the warning, knows the placeholder is
+a slot (not a typo or an empty string), and substitutes before
+executing.
 
 ---
 
@@ -1093,12 +1131,16 @@ user should contain `origin=...` text.
 
 ### 5.2.5) Placeholder lint
 
-Apply step 4j to both sanitized, provenance-stripped strings. Scan
-fenced code blocks for placeholder-shaped tokens, skip the
-whitelist, and append a canonical warning per non-whitelisted hit.
-The lint never modifies the output — it only augments the
-`warnings:` list. See step 4j for the full regex, whitelist, and
-warning shape.
+Apply step 4j to both sanitized, provenance-stripped strings.
+Scan every code segment (fenced code blocks AND inline code
+spans) for placeholder-shaped tokens, skip the whitelist, and
+append a canonical warning per non-whitelisted hit. If any
+warnings were appended, re-render the YAML `warnings:`
+frontmatter block in `FULL_ARTIFACT` and the body `## Warnings`
+section in BOTH tiers so the newly-added warnings reach the
+emitted output. Placeholder tokens themselves pass through
+unchanged. See step 4j for the full regex, whitelist, warning
+shape, and re-render contract.
 
 ### 5.3) Ensure the artifact directory exists
 
