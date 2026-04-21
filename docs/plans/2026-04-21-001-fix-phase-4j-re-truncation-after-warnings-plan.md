@@ -3,7 +3,7 @@ title: "fix: Re-apply Phase 4g truncation after Phase 4j appends placeholder war
 type: fix
 status: active
 date: 2026-04-21
-origin: docs/todos/004-ready-p3-recheck-short-prompt-cap-after-placeholder-lint.md
+origin: docs/todos/004-complete-p3-recheck-short-prompt-cap-after-placeholder-lint.md
 ---
 
 # fix: Re-apply Phase 4g truncation after Phase 4j appends placeholder warnings
@@ -150,7 +150,7 @@ None. The change is internal to a single skill file.
 
 ## Sources & References
 
-- **Origin document:** [docs/todos/004-ready-p3-recheck-short-prompt-cap-after-placeholder-lint.md](../todos/004-ready-p3-recheck-short-prompt-cap-after-placeholder-lint.md)
+- **Origin document:** [docs/todos/004-complete-p3-recheck-short-prompt-cap-after-placeholder-lint.md](../todos/004-complete-p3-recheck-short-prompt-cap-after-placeholder-lint.md)
 - **Related plan:** [docs/plans/2026-04-15-001-feat-session-handoff-skill-plan.md](./2026-04-15-001-feat-session-handoff-skill-plan.md) — original session-handoff skill design.
 - **Related todos (landed):**
   - `docs/todos/001-complete-p2-per-type-short-prompt-soft-cap.md` — per-type caps table (the contract this fix preserves).
