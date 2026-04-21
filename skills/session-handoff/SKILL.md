@@ -1077,6 +1077,30 @@ the matching placeholder — the warnings list is shared across
 tiers (see the deduplication rule above), so both tiers need the
 updated section to stay consistent.
 
+**Re-check the short-prompt cap after re-rendering.** Step 4g
+fits `SHORT_PROMPT` under the per-`MSG_TYPE` hard cap BEFORE
+the lint runs, so the re-render above can grow the emitted
+short prompt back over that cap (each warning bullet adds
+~130-180 chars; a prompt that sat at 4480 chars under `assign`'s
+4500 hard cap can land at 4660 chars after a single warning is
+appended). After the re-render, if `SHORT_PROMPT` exceeds the
+hard cap for its `MSG_TYPE` per the step 4g table, re-apply
+step 4g's truncation priority (tier 1 → tier 2 → tier 3) against
+the re-rendered `SHORT_PROMPT`. The always-keep list from step
+4g still holds — in particular, the Warnings section is
+always-keep, so the warnings that triggered this re-truncation
+are never the bytes cut. If the prompt still exceeds the hard
+cap after all three cuts (e.g., `assign` / `review` / `report`
+where every cut tier is a no-op because those sections are
+secondary-only per step 4d), step 4g's terminal "stop cutting
+and emit as-is" rule applies — this is not a new fall-through,
+just the existing one surfacing here. Skip this re-check
+entirely when zero warnings were appended (inherits the
+zero-hit guard above). `FULL_ARTIFACT` is never capped, so no
+re-truncation runs on that tier — re-rendering its warnings
+block is complete on its own. See step 4g for the full cut
+rules, always-keep list, and emit-as-is terminal rule.
+
 **Invariant.** The placeholder text ITSELF passes through
 unchanged — the caller's intent is preserved and the receiving
 agent can act on the warning. Only the `warnings:` frontmatter
@@ -1145,9 +1169,13 @@ append a canonical warning per non-whitelisted hit. If any
 warnings were appended, re-render the YAML `warnings:`
 frontmatter block in `FULL_ARTIFACT` and the body `## Warnings`
 section in BOTH tiers so the newly-added warnings reach the
-emitted output. Placeholder tokens themselves pass through
-unchanged. See step 4j for the full regex, whitelist, warning
-shape, and re-render contract.
+emitted output. After re-rendering, re-check `SHORT_PROMPT`
+against its per-`MSG_TYPE` hard cap and re-apply step 4g's
+truncation priority if the re-render pushed the prompt back
+over cap; `FULL_ARTIFACT` is uncapped and never re-truncated.
+Placeholder tokens themselves pass through unchanged. See step
+4j for the full regex, whitelist, warning shape, re-render
+contract, and post-lint re-truncation rule.
 
 ### 5.3) Ensure the artifact directory exists
 
