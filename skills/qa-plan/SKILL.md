@@ -1354,8 +1354,41 @@ Local-only, never transmitted. Mirrors the session-handoff pattern.
 
 ---
 
+## Criterion 4 pass rule (codex cross-model value)
 
+Referenced by Phase 4's Reviewer Coverage and by the plan's AC4.
 
+> **Codex passes if at least 1 case in its output satisfies ALL
+> of:** (a) shares less than 50% token overlap with any
+> persona-generated case description, (b) lands in the final
+> REVIEWED plan's Top-10 (after the sev × lik sort with
+> tag-count tiebreaker), (c) is tagged with ≥1 risk dimension.
+>
+> **Failure:** across 3 consecutive `/qa-plan` runs, zero codex
+> cases meet all three conditions. Treat as a v0.2 trigger to
+> remove the codex integration.
+
+The rule replaces the original "codex surfaces at least one gap
+personas missed" (unmeasurable) per SpecFlow review. v0.1 evaluates
+this manually from Reviewer Coverage + Top-10; an automated
+`scripts/codex-value-check.sh` was cut from v0.1 per simplicity
+review (manual judgment suffices for the first 3 runs; add
+automation only if the manual check becomes routine).
+
+When Phase 4 renders Reviewer Coverage, the `Codex cross-model`
+row includes the pass / fail determination:
+
+```
+Codex cross-model: ran (passed Criterion 4: 2 codex-unique cases landed in Top-10, both risk-tagged)
+```
+
+or:
+
+```
+Codex cross-model: ran (FAILED Criterion 4: 0 codex-unique cases landed in Top-10; 2nd consecutive fail — 1 more fail triggers v0.2 removal)
+```
+
+---
 
 
 
