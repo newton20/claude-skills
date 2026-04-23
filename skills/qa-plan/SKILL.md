@@ -207,6 +207,219 @@ not have to shift when v0.2 implements the logic:
 
 ---
 
-<!-- Unit 3 will add: Phase 1 context gathering + surface classification -->
+## Phase 1: Context gathering + surface classification
+
+Phase 1 resolves the inputs every downstream phase depends on: the
+diff to reason about, the project context (CLAUDE.md + active
+design doc), and the surface classification (web / cli / library /
+service / claude-skill / mixed) that drives which axis taxonomy the
+Phase 2 planner uses.
+
+Every failure or degradation path emits the canonical 3-segment
+warning:
+
+```
+[warning: {source} not available -- {reason} -- {what was skipped}]
+```
+
+The receiving downstream phases parse warnings uniformly and surface
+them in the final Reviewer Coverage appendix (Phase 4).
+
+### 1a) Diff-source expansion (committed → staged → working-tree)
+
+Do NOT abort on an empty committed diff alone. Check staged and
+working-tree diffs in order; use the first non-empty one as the
+diff source. When the working-tree diff is used (uncommitted
+changes), record the fact for the Reviewer Coverage appendix so the
+receiving QA agent knows the plan applies to WIP, not to HEAD.
+
+```bash
+# Resolve the base branch for the diff. Prefer origin/HEAD, fall
+# back to main, then master.
+_BASE_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null \
+  | sed 's@^refs/remotes/origin/@@')
+if [ -z "$_BASE_BRANCH" ]; then
+  _BASE_BRANCH=$(git rev-parse --verify origin/main >/dev/null 2>&1 \
+    && echo "main" || echo "master")
+fi
+
+# Try committed diff first.
+_DIFF_SOURCE="committed"
+_DIFF_STAT=$(git diff "$_BASE_BRANCH"...HEAD --stat 2>/dev/null)
+_DIFF_PATHS=$(git diff "$_BASE_BRANCH"...HEAD --name-only 2>/dev/null)
+
+# Fall back to staged.
+if [ -z "$_DIFF_STAT" ]; then
+  _DIFF_SOURCE="staged"
+  _DIFF_STAT=$(git diff --staged --stat 2>/dev/null)
+  _DIFF_PATHS=$(git diff --staged --name-only 2>/dev/null)
+fi
+
+# Fall back to working tree (uncommitted).
+if [ -z "$_DIFF_STAT" ]; then
+  _DIFF_SOURCE="working-tree"
+  _DIFF_STAT=$(git diff HEAD --stat 2>/dev/null)
+  _DIFF_PATHS=$(git diff HEAD --name-only 2>/dev/null)
+fi
+
+# All three empty: abort with canonical warning.
+if [ -z "$_DIFF_STAT" ]; then
+  echo "[warning: no diff -- neither committed, staged, nor working-tree changes -- /qa-plan skipped]"
+  exit 1
+fi
+
+echo "DIFF_SOURCE: $_DIFF_SOURCE"
+echo "DIFF_STAT:"
+echo "$_DIFF_STAT"
+```
+
+When `DIFF_SOURCE` is `working-tree` or `staged`, note it in the
+Reviewer Coverage appendix (Phase 4) with the line:
+
+> *"Working-tree diff used (uncommitted changes); commit before
+> merge to ensure plan applies to reviewed code."*
+
+### 1b) No-git-repo guard
+
+```bash
+if ! command -v git >/dev/null 2>&1 || ! git rev-parse --git-dir >/dev/null 2>&1; then
+  echo "[warning: git -- not in a repository -- /qa-plan cannot classify surface, skipped]"
+  exit 1
+fi
+```
+
+Place this guard before step 1a so the working-tree-diff fallback
+never runs outside a repo.
+
+### 1c) Stale-DRAFT detection (warn-and-proceed)
+
+Interrupted prior runs can leave orphan DRAFT plan files. Detect
+them and warn; do NOT block with an interactive question. The
+three-way resume/discard/ignore flow was cut during deepen-plan as
+premature — v0.2 may add resume semantics if orphans accumulate in
+practice.
+
+```bash
+STALE_DRAFTS=$(find docs/qa-plans -maxdepth 1 -type f -name "*-${_BRANCH_SLUG}-qa-plan.md" 2>/dev/null \
+  | xargs -I {} sh -c 'grep -l "^status: DRAFT" "{}" 2>/dev/null || true')
+if [ -n "$STALE_DRAFTS" ]; then
+  while IFS= read -r stale; do
+    echo "[warning: stale DRAFT found at $stale -- from interrupted prior run -- starting fresh; delete manually if undesired]"
+  done <<< "$STALE_DRAFTS"
+fi
+```
+
+Proceed to the rest of Phase 1 regardless.
+
+### 1d) CLAUDE.md presence
+
+```bash
+if [ -f CLAUDE.md ]; then
+  echo "CLAUDE.md: found"
+else
+  echo "[warning: CLAUDE.md -- file not present -- proceeding without project context]"
+fi
+```
+
+CLAUDE.md absence is informational, not fatal. The Phase 2 planner
+still runs; it just has one fewer context source.
+
+### 1e) Active design doc (optional)
+
+```bash
+DESIGN_DOC=$(find "$HOME/.gstack/projects/$SLUG" -maxdepth 1 -type f \
+  -name "*${_BRANCH}-design-*.md" 2>/dev/null \
+  | sort | tail -1)
+if [ -n "$DESIGN_DOC" ]; then
+  echo "DESIGN_DOC: $DESIGN_DOC"
+else
+  echo "[warning: design doc -- no *${_BRANCH}-design-*.md under ~/.gstack/projects/$SLUG -- proceeding without design context]"
+fi
+```
+
+If present, the Phase 2 planner reads this file as ground-truth
+for product intent. If absent, the planner relies on the diff +
+CLAUDE.md + plan docs alone.
+
+### 1f) Diff-size guard (no auto-narrow)
+
+Large diffs overflow the Phase 2 planner's context. The original
+"top 10 by commit count" auto-narrow was flagged in codex review as
+an author-activity proxy, not a risk proxy — it would silently drop
+security-critical single-file changes. Ask the user instead.
+
+```bash
+_DIFF_LINES=$(echo "$_DIFF_STAT" | tail -1 | grep -oE '[0-9]+ insertion' | grep -oE '[0-9]+' || echo "0")
+_DIFF_LINES=${_DIFF_LINES:-0}
+if [ "$_DIFF_LINES" -gt 5000 ]; then
+  echo "DIFF_SIZE_EXCEEDED: $_DIFF_LINES lines"
+fi
+```
+
+When `DIFF_SIZE_EXCEEDED` is printed, use `AskUserQuestion`:
+
+- **Question:** "Diff is ${_DIFF_LINES} lines — too large to fit in Phase 2 context. How should I scope?"
+- **Option A (recommended):** *"Proceed with full diff; rely on stat-only summary + selective file reads for risk identification"*
+- **Option B:** *"I'll provide a comma-separated list of path/glob patterns to scope to (e.g., `src/auth/*,migrations/20260422*`)"*
+- **Option C:** *"Abort — I'll split the diff into smaller chunks and re-run `/qa-plan` per chunk"*
+
+**SPAWNED_SESSION behavior:** if `OPENCLAW_SESSION` is set, auto-
+pick option A (proceed with full diff) and record in Reviewer
+Coverage: `AskUserQuestion auto-resolved (diff-size guard → proceed with full diff) due to spawned session.`
+
+### 1g) Surface auto-detection + user confirmation
+
+Auto-detect the primary surface from the diff file paths. The
+path-pattern rules live in `references/taxonomies.md` under the
+"Surface detection rules" table; read that file before classifying.
+Representative rules:
+
+| Diff path pattern                         | Detected surface |
+|-------------------------------------------|------------------|
+| `*.tsx`, `*.jsx`, `*.html`, `*.css`, `public/*` | web         |
+| `bin/*`, `cmd/*`, `cli/*`, `package.json#bin`   | cli         |
+| `lib/*`, `src/lib/*`, `pkg/*`                    | library     |
+| `api/*`, `routes/*`, `migrations/*`, `Docker*`   | service     |
+| `skills/*/SKILL.md`, `~/.claude/skills/*`        | claude-skill |
+
+Count matches per surface across `$_DIFF_PATHS`. The surface with
+the most matches is the auto-detected primary.
+
+Use `AskUserQuestion` to confirm:
+
+- **Question:** "Auto-detected surface: `{primary}` ({N} matching files). Confirm?"
+- **Option A (Recommended):** *"Yes, {primary}"*
+- **Option B–E:** the other four surfaces, each labeled with the
+  match count for that surface (`web (3 files)`, `cli (0 files)`,
+  etc.) so the user sees why auto-detection chose the primary
+- **Option F:** *"mixed — I'll answer the follow-up"*
+
+**SPAWNED_SESSION behavior:** if `OPENCLAW_SESSION` is set, auto-
+pick the `{primary}` option and record the auto-pick in Reviewer
+Coverage.
+
+### 1h) Mixed-surface sub-question
+
+If ≥2 surfaces have non-zero match counts, the user may have
+picked option F above or you may decide to ask proactively. Ask:
+
+- **Question:** "Multiple surfaces detected: {list with counts}. How should I plan?"
+- **Option A (Recommended):** *"Primary = {primary}; include cross-cutting notes for the others in a single `## Cross-Surface` section"*
+- **Option B:** *"Full multi-surface — author axis sections for every detected surface (longer plan, more coverage)"*
+
+**SPAWNED_SESSION behavior:** auto-pick option A.
+
+### 1i) Progress emission
+
+Before handing off to Phase 2, print a status line so the user knows
+what was decided:
+
+```
+[Phase 1] surface: {primary}; diff-source: {committed|staged|working-tree}; CLAUDE.md: {found|missing}; design doc: {found|missing}
+```
+
+---
+
 <!-- Units 6-10 will add: Phases 2-6 -->
+
 
