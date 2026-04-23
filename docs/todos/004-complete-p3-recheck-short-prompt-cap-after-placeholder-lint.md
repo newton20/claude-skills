@@ -1,5 +1,5 @@
 ---
-status: ready
+status: complete
 priority: p3
 issue_id: "004"
 tags: [session-handoff, phase-4, phase-5, truncation, placeholder-lint]
@@ -158,4 +158,69 @@ step 4g's truncation-priority" rule.
 
 ## Work Log
 
-_(empty — will fill when the follow-up lands)_
+### 2026-04-21 - Implementation (Option 1)
+
+**By:** Claude Opus 4.7 (ce-work session, branch
+`fix/todo-004-phase-4j-re-truncation`)
+
+**Plan:** `docs/plans/2026-04-21-001-fix-phase-4j-re-truncation-after-warnings-plan.md`
+
+**Actions:**
+- Added `**Re-check the short-prompt cap after re-rendering.**`
+  sub-block to Phase 4j in `skills/session-handoff/SKILL.md`,
+  positioned between the existing "Re-render the warnings sections
+  after appending" block (ending ~line 1078) and the
+  `**Invariant.**` paragraph. The block documents:
+  - Why the re-render can push `SHORT_PROMPT` back over cap
+    (warning bullets add ~130-180 chars; a 4480-char `assign`
+    prompt can land at 4660 after one warning).
+  - The re-truncation rule: re-apply step 4g's tier 1 → tier 2 →
+    tier 3 cuts against the re-rendered `SHORT_PROMPT`.
+  - The always-keep list invariant: the Warnings section stays
+    always-keep, so the warnings that triggered this re-truncation
+    are never the bytes cut.
+  - The emit-as-is terminal fall-through: this is not a new rule,
+    just step 4g's existing terminal rule surfacing here (important
+    for `assign` / `review` / `report` where every cut tier is a
+    structural no-op per step 4d).
+  - The zero-warning skip guard (inherits the existing re-render
+    guard).
+  - `FULL_ARTIFACT` uncapped — no re-truncation on that tier.
+  - Cross-reference back to step 4g to avoid restating cut rules.
+- Extended Phase 5.2.5 pointer in `skills/session-handoff/SKILL.md`
+  to advertise the re-truncation alongside the re-render contract,
+  so chronological readers see the full Phase 4j surface from
+  Phase 5 without jumping backwards.
+- Resynced `~/.claude/skills/session-handoff/SKILL.md` from repo
+  copy; verified with `diff` (byte-identical).
+- Renamed this todo `004-ready-*` → `004-complete-*`, flipped
+  frontmatter `status: ready` → `status: complete`.
+
+**Acceptance criteria:**
+- [x] Phase 4j prose documents that, after re-rendering the
+  `## Warnings` section, if the short prompt exceeds the type's
+  hard cap, Phase 4g's truncation priority (tiers 1-3) re-fires.
+- [x] The existing "stop cutting and emit as-is" fall-through rule
+  still applies after the re-truncation pass if the prompt remains
+  over cap.
+- [x] Phase 5.2.5 pointer is updated to mention the re-truncation.
+- [x] Installed copy at `~/.claude/skills/session-handoff/SKILL.md`
+  is resynced.
+- [ ] Commit + push pending (next step in this session).
+
+**Learnings:**
+- The always-keep list in step 4g already protected the Warnings
+  section, so no new always-keep entry was needed — the
+  re-truncation inherits protection automatically. This is why
+  the re-truncation rule slots into step 4g's existing machinery
+  cleanly: the invariants (always-keep, emit-as-is terminal) were
+  already load-bearing, and extending them to cover the
+  post-lint case is a no-op at the invariant level.
+- Cross-referencing step 4g instead of restating its tier rules
+  keeps the two sections in sync automatically: a future edit to
+  the tier rules (e.g., adding a tier 4 cut) flows through to
+  the re-truncation without Phase 4j needing separate maintenance.
+- Phase 5.2.5's final sentence is the natural surface to enumerate
+  the Phase 4j behaviors. Adding "post-lint re-truncation" to the
+  "See step 4j for ..." list preserves the step-5-as-pointer
+  posture — the rule's authority still lives in step 4j.

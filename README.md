@@ -14,17 +14,37 @@ More skills coming. Each one gets its own `skills/<name>/` directory with a `SKI
 
 ## Install a skill
 
-Every skill is self-contained under `skills/<name>/`. To make a skill callable as `/<name>` in Claude Code, drop it into `~/.claude/skills/`:
+Every skill is self-contained under `skills/<name>/`. To make a skill callable as `/<name>` in Claude Code, install it into `~/.claude/skills/`. Pick whichever install style fits your workflow.
+
+### Option A — Live link (recommended for contributors)
+
+Links the installed skill at the repo copy so `git pull` keeps it current. Zero resync step. The installed skill tracks whatever branch the repo is on, which is usually what you want when iterating.
+
+**macOS / Linux:**
 
 ```bash
-# One-time copy
-cp -R skills/session-handoff ~/.claude/skills/
-
-# Or keep it fresh by symlinking
 ln -s "$(pwd)/skills/session-handoff" ~/.claude/skills/session-handoff
 ```
 
-Verify:
+**Windows (PowerShell):**
+
+```powershell
+New-Item -ItemType Junction `
+  -Path "$HOME\.claude\skills\session-handoff" `
+  -Target "$HOME\project\claude-skills\skills\session-handoff"
+```
+
+Junctions work without admin or Developer Mode and are transparent to the Claude Code harness. Adjust the `-Target` path if your clone lives elsewhere.
+
+### Option B — One-time copy (pin to a known-good state)
+
+Copies the skill once. The installed copy stays frozen until you copy again. Pick this if you want the repo and the installed skill to evolve independently.
+
+```bash
+cp -R skills/session-handoff ~/.claude/skills/
+```
+
+### Verify
 
 ```bash
 ls ~/.claude/skills/session-handoff/SKILL.md
@@ -79,10 +99,10 @@ When review surfaces a non-blocking follow-up, capture it as a todo at `docs/tod
 001-complete-p2-per-type-short-prompt-soft-cap.md
 002-complete-p3-boundary-worked-cases-phase-4g.md
 003-complete-p3-session-handoff-placeholder-vs-literal-sanitization.md
-004-ready-p3-recheck-short-prompt-cap-after-placeholder-lint.md
+004-complete-p3-recheck-short-prompt-cap-after-placeholder-lint.md
 ```
 
-Three completed (all from session-handoff v0.1 polish), one ready for the next sprint.
+All four completed — session-handoff v0.1 polish cycle closed. Next todos will appear here as review cycles surface them.
 
 ## Design principles
 

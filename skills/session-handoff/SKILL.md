@@ -865,7 +865,10 @@ Always keep, in every truncation state:
 - Project context: branch and HEAD SHA at minimum.
 - The `INSTRUCTIONS` section (or the type-specific section where
   `INSTRUCTIONS` has been threaded).
-- Warnings section.
+- Warnings section. Load-bearing for step 4j's post-lint
+  re-truncation — warnings appended by the placeholder lint must
+  survive any subsequent cut tier, otherwise the re-truncation
+  could silently remove its own just-appended signal.
 - The artifact-pointer line.
 
 If after all three cuts the prompt still exceeds the type's hard cap,
@@ -1077,6 +1080,41 @@ the matching placeholder — the warnings list is shared across
 tiers (see the deduplication rule above), so both tiers need the
 updated section to stay consistent.
 
+**Re-check the short-prompt cap after re-rendering.** Step 4g
+fits `SHORT_PROMPT` under the per-`MSG_TYPE` hard cap BEFORE
+the lint runs, so the warnings-section re-render in the
+previous sub-block can grow the emitted short prompt back over
+that cap (each warning bullet adds ~130-180 chars; a prompt
+that sat at 4480 chars under `assign`'s 4500 hard cap can land
+at 4660 chars after a single warning is appended). After the
+re-render, if `SHORT_PROMPT` exceeds the hard cap for its
+`MSG_TYPE` per the step 4g caps table, re-apply step 4g's
+truncation-priority cut list — the numbered tiers under "If the
+rendered short prompt exceeds the type's hard cap, reduce
+content in this order" (tier 1 = Plan reference detail, tier 2
+= Status details, tier 3 = Decisions / Open questions body) —
+against the re-rendered `SHORT_PROMPT`. The always-keep list
+from step 4g still holds — in particular, the Warnings section
+is always-keep, so the warnings that triggered this
+re-truncation are never the bytes cut. If the prompt still
+exceeds the hard cap after all three cuts, step 4g's terminal
+"stop cutting and emit as-is" rule applies — this is not a new
+fall-through, just the existing one surfacing here. Two
+sub-cases can reach that terminal rule: (1) for `assign` /
+`review` / `report`, every cut tier is a structural no-op
+because those sections are secondary-only per step 4d, so the
+prompt body does not shrink at all; (2) for `handoff` /
+`brief`, cuts DO fire against the primary Plan reference /
+Status / Decisions / Open questions bodies, but the reclaimed
+bytes can be smaller than the warning text just appended,
+leaving the prompt still over cap. Both sub-cases land on
+emit-as-is by the same rule. Skip this re-check entirely when
+zero warnings were appended (inherits the zero-hit guard
+above). `FULL_ARTIFACT` is never capped, so no re-truncation
+runs on that tier — re-rendering its warnings block is
+complete on its own. See step 4g for the full cut rules,
+always-keep list, and emit-as-is terminal rule.
+
 **Invariant.** The placeholder text ITSELF passes through
 unchanged — the caller's intent is preserved and the receiving
 agent can act on the warning. Only the `warnings:` frontmatter
@@ -1145,9 +1183,13 @@ append a canonical warning per non-whitelisted hit. If any
 warnings were appended, re-render the YAML `warnings:`
 frontmatter block in `FULL_ARTIFACT` and the body `## Warnings`
 section in BOTH tiers so the newly-added warnings reach the
-emitted output. Placeholder tokens themselves pass through
-unchanged. See step 4j for the full regex, whitelist, warning
-shape, and re-render contract.
+emitted output. After re-rendering, re-check `SHORT_PROMPT`
+against its per-`MSG_TYPE` hard cap and re-apply step 4g's
+truncation priority if the re-render pushed the prompt back
+over cap; `FULL_ARTIFACT` is uncapped and never re-truncated.
+Placeholder tokens themselves pass through unchanged. See step
+4j for the full regex, whitelist, warning shape, re-render
+contract, and post-lint re-truncation rule.
 
 ### 5.3) Ensure the artifact directory exists
 
