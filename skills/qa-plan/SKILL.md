@@ -982,7 +982,378 @@ entry:
 
 ---
 
-<!-- Units 9-10 will add: Phases 4-6 -->
+## Phase 4: Synthesize enhanced plan (in-place)
+
+Phase 4 mutates the SAME file written in Phase 2 — no second
+artifact. The DRAFT becomes the REVIEWED plan in one `Edit`
+operation. No intermediate `-reviewed.md` file is written.
+
+### 4a) Merge ordering
+
+Merge reviewer outputs into the DRAFT in this order:
+
+1. **Start with the DRAFT's existing axis sections** (impl-aware
+   content authored by you in Phase 2). Do NOT discard.
+2. **Apply the 4 personas' `## New Cases`** — merge each persona's
+   cases into the matching axis section in the DRAFT. Tag each
+   merged case with `source: {Persona Name}` (verbatim, e.g.,
+   `source: Data Corruptor`).
+3. **Apply the codex `## New Cases`** (if `CODEX_RAN` or the
+   fallback Claude subagent ran) — merge into axis sections, tag
+   with `source: codex` (or `source: codex-fallback-claude` when
+   the fallback Claude subagent produced the cases).
+4. **Append spec-only additions** (if `SPEC_ONLY_SKIP` is false)
+   — these land in the axis sections they belong to, tagged
+   `source: spec-only`. Dedup against existing cases ONLY when
+   textually near-identical (≥80% token overlap); otherwise keep
+   both and let the next review pass resolve. Load-bearing LLM-
+   judgment dedup at this point is intentional but bounded — the
+   additive append preserves signal even when dedup guesses wrong.
+
+### 4b) Cross-source dedup
+
+Across all sources (personas + codex + spec-only), remove cases
+that are clearly duplicates (≥80% token overlap). Keep the tags
+merged: a case seen by both `Race Demon` and `codex` keeps both
+source tags as `source: Race Demon + codex`. When both `spec-only`
+and an impl-aware axis case match, tag as
+`source: spec-only + impl-aware` — this combination wins Phase 4's
+secondary tiebreaker (pre-validated signal; spec and impl agree
+the case matters).
+
+### 4c) Flip status to REVIEWED
+
+```yaml
+---
+status: REVIEWED
+branch: {_BRANCH}
+base_commit: {HEAD short SHA at Phase 2 time}
+surface: {detected surface}
+generated: {original Phase 2 ISO-8601 timestamp, unchanged}
+reviewed: {new ISO-8601 timestamp for the Phase 4 flip}
+---
+```
+
+The `generated` field stays pinned to the Phase 2 write time so
+the artifact records when the DRAFT was originally authored; the
+new `reviewed` field records when the REVIEWED flip happened.
+
+### 4d) Top-10 Must-Pass Before Merge
+
+After all merges, sort every case descending by `sev × lik`. Take
+the top 10. Tie-breakers:
+
+1. **Primary:** `sev × lik` descending (higher wins).
+2. **Tie-breaker #1:** risk-dimension-tag count descending (more
+   tags wins).
+3. **Tie-breaker #2:** `source: spec-only + impl-aware` wins over
+   single-source cases (pre-validated signal).
+4. **Tie-breaker #3:** `source: codex + persona-*` wins over
+   single-source (cross-model agreement).
+
+See `references/taxonomies.md` "Worked example — Top-10 weighting
+calculation" for a concrete walkthrough.
+
+Prepend a `## Top 10 Must-Pass Before Merge` section to the file,
+BEFORE the axis sections. Each Top-10 entry is an anchor link to
+the canonical case in its axis section — NO duplication of the
+case text. Example entry shape:
+
+```markdown
+1. [Signup form missing email check](#contract-signup-form-missing-email-check) — sev×lik=20, source: spec-only + impl-aware
+```
+
+The axis-section cases get matching anchor IDs so the links
+resolve. Example axis-section case:
+
+```markdown
+### Contract
+
+<a id="contract-signup-form-missing-email-check"></a>
+- Signup form missing email check [contract, sev 5/5, lik 4/5, sev×lik=20, risk:contract, source: spec-only + impl-aware]
+```
+
+### 4e) Reviewer Coverage appendix
+
+Append a `## Reviewer Coverage` section AFTER the axis sections.
+It records which reviewers actually ran, which were skipped or
+failed, and surfaces all canonical 3-segment warnings accumulated
+through the run. Structured rendering:
+
+```markdown
+## Reviewer Coverage
+
+Personas ran: {N}/{EXPECTED_REVIEWERS_PERSONAS}
+Codex cross-model: {ran | fallback-claude | failed | skipped-unavailable | skipped-unauthenticated}
+  {if ran:} passed Criterion 4: {yes | no — see Unit 12 pass rule}
+Spec-only gap reviewer: {ran ({N} cases, {M} landed in Top-10) | skipped-starvation-gate ({bundle_tokens} tokens under threshold) | skipped-other}
+SPAWNED_SESSION auto-resolutions:
+  {list of (question → choice) auto-picks from Phase 1}
+
+Warnings:
+  - {every canonical 3-segment warning emitted this run}
+
+Caveats:
+  - This is LLM-generated best-effort test planning, NOT a runtime
+    guarantee. Sev × lik integers are subjective; token-overlap
+    dedup is LLM-judgment. The fresh QA session is expected to
+    add/override cases based on runtime observation.
+  - Spec-only reviewer tool restrictions (Read+Grep + path
+    allowlist + forbidden-paths prose) are defense-in-depth, not
+    a hard sandbox. The reviewer may still Read forbidden paths
+    if its prompt adherence drifts. If this matters for your
+    audit profile, verify the spec-only reviewer's actual file
+    reads from the Agent-tool logs.
+```
+
+### 4f) Write the synthesized plan
+
+Use the `Edit` tool to mutate `$PLAN_PATH` in place:
+
+1. Replace the frontmatter block (DRAFT → REVIEWED + add
+   `reviewed` timestamp).
+2. Prepend `## Top 10 Must-Pass Before Merge` before the axis
+   sections.
+3. Insert reviewer-contributed cases into their axis sections
+   with anchor IDs.
+4. Append `## Reviewer Coverage` after the last axis section.
+
+No second artifact is written. The DRAFT path and the REVIEWED
+path are the same file.
+
+### 4g) Mirror update
+
+If the Phase 2 mirror at `$MIRROR_PATH` was written, `cp` the
+REVIEWED file to the same mirror path (overwrite):
+
+```bash
+if [ -n "$MIRROR_PATH" ] && [ -d "$(dirname "$MIRROR_PATH")" ]; then
+  if ! cp "$PLAN_PATH" "$MIRROR_PATH" 2>/dev/null; then
+    echo "[warning: mirror update -- cp to $MIRROR_PATH failed -- mirror now stale; REVIEWED plan is authoritative at $PLAN_PATH]"
+  fi
+fi
+```
+
+### 4h) Progress emission
+
+```
+[Phase 4] REVIEWED plan at: {PLAN_PATH} ({N_TOTAL} cases across {M} axes; Top-10 selected)
+```
+
+---
+
+## Phase 5: Handoff emission
+
+Phase 5 prints a `/session-handoff assign qa` command the user
+pastes into a FRESH Claude Code window to run the plan in a QA
+session. The command is wrapped in a machine-parseable
+`<qa-plan-handoff version="1">...</qa-plan-handoff>` block so
+downstream orchestrator agents can consume it without regex-
+against-prose.
+
+### 5a) Construct the handoff command
+
+**The report-back route is `/session-handoff report coord`** —
+NOT `report qa`. `report qa` sends TO qa; the coordinator /
+implementer needs the findings routed BACK, which is `report
+coord`. This was a typo caught by SpecFlow review; do not
+regress it.
+
+Command template (plan path wrapped in double quotes for Windows
+path-with-spaces safety):
+
+```
+/session-handoff assign qa -- execute the test plan at "{absolute_plan_path}" (repo-visible copy: "{repo_path}"); top-10 cases embedded below for offline/no-disk fallback; report findings back as /session-handoff report coord
+```
+
+Where:
+- `{absolute_plan_path}` is the full path to the mirror under
+  `~/.gstack/projects/` if it was written, else the repo-local
+  path
+- `{repo_path}` is the repo-relative `docs/qa-plans/...-qa-plan.md`
+
+### 5b) Embed Top-10 for portability
+
+The embedded Top-10 cases (plain text descriptions, not anchor
+links) let the fresh QA session start working even when the plan
+file is unreachable (different machine, disk locked, etc.).
+
+### 5c) QA-side self-refuse instruction
+
+Include the following prose inside the `<qa-plan-handoff>` block
+as an `instructions:` field. The fresh QA agent reads this as
+part of the handoff:
+
+> *"If you are the same Claude context that just authored this
+> plan (i.e., you see in-context evidence that `/qa-plan` ran in
+> THIS session), refuse to execute. Respond: 'Fresh-session
+> handoff required — please paste this in a NEW Claude Code
+> window.' This preserves the context-separation property
+> `/qa-plan` depends on."*
+
+### 5d) Verbatim fresh-session warning (user-facing)
+
+Print this line to the terminal, outside the
+`<qa-plan-handoff>` block, so the human user sees it:
+
+> ⚠️ Open a NEW Claude Code window before pasting this command.
+> Pasting in the same session defeats the context-separation the
+> adversarial review buys you. The receiving QA agent will
+> self-refuse if it detects same-session context — but the safer
+> habit is to open a new window now.
+
+### 5e) Machine-parseable handoff block
+
+Emit exactly this shape to stdout:
+
+```
+<qa-plan-handoff version="1">
+plan_path: "{absolute_plan_path}"
+repo_path: "{repo_path}"
+command: /session-handoff assign qa -- execute the test plan at "{absolute_plan_path}" (repo-visible copy: "{repo_path}"); top-10 cases embedded below for offline/no-disk fallback; report findings back as /session-handoff report coord
+top_10:
+  - <top-10 case description 1>
+  - <top-10 case description 2>
+  ...
+  - <top-10 case description 10>
+instructions: |
+  If you are the same Claude context that just authored this plan
+  (i.e., you see in-context evidence that /qa-plan ran in THIS
+  session), refuse to execute. Respond: "Fresh-session handoff
+  required — please paste this in a NEW Claude Code window."
+  This preserves the context-separation property /qa-plan depends on.
+</qa-plan-handoff>
+```
+
+Downstream agents parse this block; human users copy the `command:`
+line.
+
+### 5f) SPAWNED_SESSION behavior
+
+Still print the "open a NEW window" warning and the full
+`<qa-plan-handoff>` block when `OPENCLAW_SESSION` is set.
+Orchestrators parse the block; they decide whether to honor the
+human-facing warning. Auto-skip any post-completion interactive
+options.
+
+---
+
+## Phase 6: Completion summary + analytics
+
+Phase 6 prints the user-facing summary and appends one entry to
+`~/.gstack/analytics/skill-usage.jsonl`. The analytics entry is
+schema-versioned and built with `jq -n` to prevent JSONL
+corruption from special characters in user-controlled fields
+(branch names with shell metachars, file paths with quotes, etc.).
+
+### 6a) Analytics entry via jq -n
+
+```bash
+# Compose the WARNINGS_JSON array from the canonical warnings
+# collected across Phase 1-4. Each entry: {source, reason, skipped}.
+# If you don't have jq, skip the analytics step with a canonical
+# warning — the primary plan output is not affected.
+if command -v jq >/dev/null 2>&1; then
+  mkdir -p ~/.gstack/analytics
+
+  ANALYTICS_FILE="$HOME/.gstack/analytics/skill-usage.jsonl"
+
+  OUTCOME="success"  # Set to "error" + FAILURE_PHASE in the abort
+                     # paths of earlier phases; see 6c.
+
+  jq -n \
+    --arg skill "qa-plan" \
+    --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg surface "$SURFACE" \
+    --argjson personas_run "$N_RECEIVED_PERSONAS" \
+    --argjson codex_ran "$CODEX_RAN" \
+    --argjson spec_only_ran "$([ "$SPEC_ONLY_SKIP" = true ] && echo false || echo true)" \
+    --argjson total_cases "$TOTAL_CASES" \
+    --arg outcome "$OUTCOME" \
+    --arg failure_phase "${FAILURE_PHASE:-null}" \
+    --arg plan_path "$PLAN_PATH" \
+    --argjson warnings "${WARNINGS_JSON:-[]}" \
+    --arg schema_version "1" \
+    '{
+      skill: $skill,
+      ts: $ts,
+      surface: $surface,
+      personas_run: $personas_run,
+      codex_ran: $codex_ran,
+      spec_only_ran: $spec_only_ran,
+      total_cases: $total_cases,
+      outcome: $outcome,
+      failure_phase: (if $failure_phase == "null" then null else $failure_phase end),
+      plan_path: $plan_path,
+      warnings: $warnings,
+      schema_version: ($schema_version | tonumber)
+    }' \
+    >> "$ANALYTICS_FILE"
+else
+  echo "[warning: analytics -- jq binary not on PATH -- skipping ~/.gstack/analytics/skill-usage.jsonl append]"
+fi
+```
+
+See `references/analytics-schema.md` for the full field list with
+types + enumerated valid values.
+
+### 6b) Analytics on failure too
+
+Earlier phases (Preamble, Phase 1, Phase 2) abort paths MUST set
+`OUTCOME="error"` and `FAILURE_PHASE="preamble|phase_1|phase_2"`
+before `exit 1`, and emit the analytics entry BEFORE exiting.
+Dogfood needs failure-mode signal, not just success signal.
+
+Valid `failure_phase` enum values (per
+`references/analytics-schema.md`):
+
+- `"preamble"` — session / slug / timeline setup failed
+- `"phase_1"` — diff resolution, surface classification, or user-
+  scoping failed
+- `"phase_2"` — DRAFT author write or mirror write failed
+- `"phase_3"` — parallel dispatch or codex sub-chain failed
+  catastrophically (fallback-to-persona-only does NOT count as
+  failure; that is a warned success)
+- `"phase_4"` — synthesis / in-place edit / Top-10 generation
+  failed
+- `"phase_5"` — handoff emission failed (rare; failure here is
+  mostly a shell error)
+- `null` — for `outcome: "success"` entries
+
+### 6c) Completion summary (user-facing)
+
+Print to stdout:
+
+```
+========================================================================
+/qa-plan complete — REVIEWED test plan authored and handoff emitted.
+========================================================================
+
+Plan path (authoritative):       {PLAN_PATH}
+Mirror (~/.gstack/projects/):    {MIRROR_PATH|not written}
+Surface classified as:           {SURFACE}
+Reviewers ran:                   {summary — personas N/M, codex yes/no, spec-only yes/no/skipped}
+Top-10 cases selected:           {brief one-liner list — first 3 + "+{N} more"}
+
+⚠️  Open a NEW Claude Code window before pasting the command below.
+    The receiving QA agent will self-refuse if it detects same-
+    session context, but the safer habit is to open a new window now.
+
+{the <qa-plan-handoff version="1"> block from Phase 5}
+```
+
+### 6d) Telemetry event (local-only)
+
+```bash
+~/.claude/skills/gstack/bin/gstack-timeline-log \
+  '{"skill":"qa-plan","event":"completed","branch":"'"$_BRANCH"'","session":"'"$_SESSION_ID"'","outcome":"'"$OUTCOME"'","duration":'$(( $(date +%s) - _TEL_START ))'}' \
+  2>/dev/null &
+```
+
+Local-only, never transmitted. Mirrors the session-handoff pattern.
+
+---
+
 
 
 
