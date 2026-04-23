@@ -420,6 +420,153 @@ what was decided:
 
 ---
 
-<!-- Units 6-10 will add: Phases 2-6 -->
+## Phase 2: Impl-aware DRAFT authoring
+
+You (the orchestrator) are the single impl-aware planner. You see
+everything — the full diff, the source files, the design doc, plan
+docs, `CLAUDE.md`. Your job is to author a DRAFT test plan that
+covers the Phase 1 surface's axis list (from
+`references/taxonomies.md`) with cases tagged by severity,
+likelihood, and ≥1 risk dimension.
+
+The black-box / spec-only signal that might otherwise argue for
+splitting Phase 2 into parallel spec-vs-impl planners is NOT split
+here. Round-5 review converged on rejecting a dual-planner
+architecture: the merge step was load-bearing LLM-judgment that
+could silently reconcile spec-vs-impl mismatches (the exact signal
+the dual shape was meant to surface). Instead, Phase 3 adds a
+5th reviewer (spec-only gap finder, Unit 7b) that APPENDS
+cases to this DRAFT — additive, not reconciling. Keep Phase 2
+single-planner.
+
+### 2a) Read the inputs
+
+Read, in order:
+
+1. `references/taxonomies.md` — axis list for the Phase 1 surface
+2. `$_DIFF_STAT` and `$_DIFF_PATHS` (already resolved in Phase 1)
+3. The source files `$_DIFF_PATHS` refers to, as needed for axis
+   coverage (not all of them blindly — read what you need to tag
+   cases accurately)
+4. `CLAUDE.md` if present
+5. `$DESIGN_DOC` if present
+6. Any `docs/plans/*-plan.md` files with `status: active` in
+   frontmatter (these are IMPL-shaped, not spec-shaped — do not
+   share with the Phase 3 spec-only reviewer)
+
+### 2b) Author the DRAFT
+
+Produce axis-structured markdown. For the detected surface, create
+one `## {Axis}` section per axis from the taxonomy with cases
+inside it. Every case follows the canonical line shape:
+
+```
+- <one-line case description> [axis, sev N/5, lik N/5, sev×lik=N, risk:<dim1,dim2>]
+```
+
+- `sev` and `lik` are integers 1-5 (product 1-25)
+- `sev×lik` is pre-computed so Phase 4's sort is a plain text scan
+- Every case is tagged with ≥1 risk dimension from the 5 cross-
+  cutting tags in `references/taxonomies.md`
+- Cap your own output to ~4000 tokens for the DRAFT; Phase 3
+  reviewers add more, but an overlong DRAFT starves the Phase 3
+  context window
+
+Start with the worked examples in `references/taxonomies.md` to
+calibrate sev / lik intuition for the surface. When unsure,
+bias sev toward 3-4 and lik toward 2-3 rather than inventing
+extremes.
+
+### 2c) Resolve the plan file paths
+
+Second-precision timestamp + capped collision guard. Handles two
+`/qa-plan` invocations in the same second (rare but legal):
+
+```bash
+QA_PLAN_DIR="docs/qa-plans"
+mkdir -p "$QA_PLAN_DIR"
+
+PLAN_PATH="$QA_PLAN_DIR/${_TS}-${_BRANCH_SLUG}-qa-plan.md"
+if [ -e "$PLAN_PATH" ]; then
+  PLAN_PATH="$QA_PLAN_DIR/${_TS}-${_BRANCH_SLUG}-qa-plan-2.md"
+fi
+if [ -e "$PLAN_PATH" ]; then
+  ORIG="$QA_PLAN_DIR/${_TS}-${_BRANCH_SLUG}-qa-plan.md"
+  DUP="$QA_PLAN_DIR/${_TS}-${_BRANCH_SLUG}-qa-plan-2.md"
+  echo "[warning: filename collision -- $ORIG and $DUP both exist -- aborting to avoid data loss]"
+  exit 1
+fi
+
+echo "PLAN_PATH: $PLAN_PATH"
+```
+
+Second-precision is sufficient: a third back-to-back run in the
+same clock second would be a genuine foot-gun (likely automation
+that ignores the first two), and the canonical warning above fails
+loudly rather than overwriting.
+
+### 2d) Write the DRAFT
+
+Write the authored axis-structured markdown to `$PLAN_PATH` with
+this YAML frontmatter:
+
+```yaml
+---
+status: DRAFT
+branch: {_BRANCH}
+base_commit: {git rev-parse --short HEAD output}
+surface: {detected surface from Phase 1}
+generated: {ISO-8601 timestamp in UTC}
+---
+```
+
+Frontmatter keys stay in this exact order so Phase 4's in-place
+`status: DRAFT` → `status: REVIEWED` flip and downstream parsers
+see a stable shape.
+
+### 2e) Mirror to ~/.gstack/projects/
+
+Always copy (no symlink fallback — zero user-visible difference
+for a terminal-state output file, per simplicity review).
+
+```bash
+USER_TAG="${USER:-unknown}"
+MIRROR_DIR="$HOME/.gstack/projects/$SLUG"
+if mkdir -p "$MIRROR_DIR" 2>/dev/null; then
+  MIRROR_PATH="$MIRROR_DIR/${USER_TAG}-${_BRANCH}-qa-plan-${_TS}.md"
+  if cp "$PLAN_PATH" "$MIRROR_PATH" 2>/dev/null; then
+    echo "MIRROR_PATH: $MIRROR_PATH"
+  else
+    echo "[warning: mirror -- cp to $MIRROR_PATH failed -- plan still written to $PLAN_PATH]"
+    MIRROR_PATH=""
+  fi
+else
+  echo "[warning: mirror -- mkdir $MIRROR_DIR failed -- plan still written to $PLAN_PATH]"
+  MIRROR_PATH=""
+fi
+```
+
+The repo-tracked primary at `$PLAN_PATH` is authoritative. The
+mirror is a convenience for cross-project discovery via
+`~/.gstack/projects/`.
+
+### 2f) SPAWNED_SESSION behavior
+
+Phase 2 has no `AskUserQuestion` sites. If `OPENCLAW_SESSION` is
+set, proceed silently; orchestrator-visible progress lines still
+print.
+
+### 2g) Progress emission
+
+Before handing off to Phase 3, print:
+
+```
+[Phase 2] DRAFT written: {PLAN_PATH} ({N} cases across {M} axes); mirror: {MIRROR_PATH|not written}
+```
+
+---
+
+<!-- Units 7-10 will add: Phases 3-6 -->
+
 
 
