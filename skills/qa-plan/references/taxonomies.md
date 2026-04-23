@@ -115,10 +115,10 @@ over single-source cases (pre-validated signal).
 
 | Case                                          | sev | lik | sev×lik | tags | source               | Rank                                      |
 |-----------------------------------------------|-----|-----|---------|------|----------------------|-------------------------------------------|
-| "Signup form missing email check"             | 5   | 4   | 20      | 1    | spec-only + impl     | 1 (tie broken by spec+impl agreement)     |
-| "Race on concurrent signup"                   | 5   | 4   | 20      | 2    | Race Demon           | 2 (tie broken by 2 tags vs 1)             |
-| "SQL injection via search param"              | 5   | 4   | 20      | 1    | Prod Saboteur        | 3                                         |
-| "Slow page load with 50 items"                | 3   | 5   | 15      | 0    | Confused User        | 4                                         |
+| "Race on concurrent signup"                   | 5   | 4   | 20      | 2    | Race Demon           | 1 (primary tiebreaker: 2 tags > 1 tag)    |
+| "Signup form missing email check"             | 5   | 4   | 20      | 1    | spec-only + impl     | 2 (tag-count tied at 1; secondary tiebreaker: spec+impl agreement wins) |
+| "SQL injection via search param"              | 5   | 4   | 20      | 1    | Prod Saboteur        | 3 (1 tag, single-source; loses both tiebreakers) |
+| "Slow page load with 50 items"                | 3   | 5   | 15      | 0    | Confused User        | 4 (lower sev×lik; no tie)                 |
 
 ---
 

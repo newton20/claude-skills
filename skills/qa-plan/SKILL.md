@@ -174,6 +174,40 @@ fi
 ~/.claude/skills/gstack/bin/gstack-timeline-log \
   '{"skill":"qa-plan","event":"started","branch":"'"$_BRANCH"'","session":"'"$_SESSION_ID"'"}' \
   2>/dev/null &
+
+# Failure-analytics helper. Every abort path (exit 1 in Phase 1, 2,
+# or 4) calls this BEFORE exiting so dogfood telemetry captures
+# failure-mode signal, not just success signal (Phase 6b contract).
+# Uses jq -n for safe JSON serialization; silently skips if jq is
+# absent rather than blocking the abort path with a secondary failure.
+_qa_plan_emit_failure_analytics() {
+  local phase="$1"
+  command -v jq >/dev/null 2>&1 || return 0
+  mkdir -p ~/.gstack/analytics 2>/dev/null || return 0
+  jq -n \
+    --arg skill "qa-plan" \
+    --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg surface "${SURFACE:-unknown}" \
+    --arg outcome "error" \
+    --arg failure_phase "$phase" \
+    --arg plan_path "${PLAN_PATH:-}" \
+    --argjson warnings "${WARNINGS_JSON:-[]}" \
+    '{
+      skill: $skill,
+      ts: $ts,
+      surface: $surface,
+      personas_run: 0,
+      codex_ran: false,
+      spec_only_ran: false,
+      total_cases: 0,
+      outcome: $outcome,
+      failure_phase: $failure_phase,
+      plan_path: $plan_path,
+      warnings: $warnings,
+      schema_version: 1
+    }' \
+    >> ~/.gstack/analytics/skill-usage.jsonl 2>/dev/null || true
+}
 ```
 
 If the preamble prints `SPAWNED_SESSION: true`, do NOT call
@@ -225,7 +259,22 @@ warning:
 The receiving downstream phases parse warnings uniformly and surface
 them in the final Reviewer Coverage appendix (Phase 4).
 
-### 1a) Diff-source expansion (committed → staged → working-tree)
+### 1a) No-git-repo guard (runs FIRST)
+
+Check for a git repository before attempting any `git diff` probe.
+Without this, the diff-expansion block in 1b would fail silently on
+a non-git-repo run and exit with a misleading "no diff" warning
+instead of the correct "not in a repository" diagnosis.
+
+```bash
+if ! command -v git >/dev/null 2>&1 || ! git rev-parse --git-dir >/dev/null 2>&1; then
+  echo "[warning: git -- not in a repository -- /qa-plan cannot classify surface, skipped]"
+  _qa_plan_emit_failure_analytics "phase_1"
+  exit 1
+fi
+```
+
+### 1b) Diff-source expansion (committed → staged → working-tree)
 
 Do NOT abort on an empty committed diff alone. Check staged and
 working-tree diffs in order; use the first non-empty one as the
@@ -265,6 +314,7 @@ fi
 # All three empty: abort with canonical warning.
 if [ -z "$_DIFF_STAT" ]; then
   echo "[warning: no diff -- neither committed, staged, nor working-tree changes -- /qa-plan skipped]"
+  _qa_plan_emit_failure_analytics "phase_1"
   exit 1
 fi
 
@@ -278,18 +328,6 @@ Reviewer Coverage appendix (Phase 4) with the line:
 
 > *"Working-tree diff used (uncommitted changes); commit before
 > merge to ensure plan applies to reviewed code."*
-
-### 1b) No-git-repo guard
-
-```bash
-if ! command -v git >/dev/null 2>&1 || ! git rev-parse --git-dir >/dev/null 2>&1; then
-  echo "[warning: git -- not in a repository -- /qa-plan cannot classify surface, skipped]"
-  exit 1
-fi
-```
-
-Place this guard before step 1a so the working-tree-diff fallback
-never runs outside a repo.
 
 ### 1c) Stale-DRAFT detection (warn-and-proceed)
 
@@ -494,6 +532,7 @@ if [ -e "$PLAN_PATH" ]; then
   ORIG="$QA_PLAN_DIR/${_TS}-${_BRANCH_SLUG}-qa-plan.md"
   DUP="$QA_PLAN_DIR/${_TS}-${_BRANCH_SLUG}-qa-plan-2.md"
   echo "[warning: filename collision -- $ORIG and $DUP both exist -- aborting to avoid data loss]"
+  _qa_plan_emit_failure_analytics "phase_2"
   exit 1
 fi
 
