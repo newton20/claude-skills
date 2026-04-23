@@ -208,7 +208,46 @@ _qa_plan_emit_failure_analytics() {
     }' \
     >> ~/.gstack/analytics/skill-usage.jsonl 2>/dev/null || true
 }
+
+# Warning-accumulator helper. Every site that prints a canonical
+# 3-segment '[warning: ...]' line ALSO calls this with (source,
+# reason, skipped) so the analytics entry's warnings[] array is
+# built safely. WARNINGS_JSON is a JSON array maintained as a
+# shell string; jq -c re-serializes it on each append, which
+# escapes quotes, newlines, tabs, and backslashes correctly.
+# Without this discipline, ad-hoc string concatenation produces
+# invalid JSONL when a warning contains ", \n, \t, or \ — the
+# downstream 'jq -c .' read then rejects the whole file (QA
+# finding 2026-04-23, Top-10 case #7, sev×lik=12, source: codex).
+WARNINGS_JSON="[]"
+_qa_plan_record_warning() {
+  local src="$1" reason="$2" skipped="$3"
+  command -v jq >/dev/null 2>&1 || return 0
+  WARNINGS_JSON=$(jq -c \
+    --arg src "$src" \
+    --arg reason "$reason" \
+    --arg skipped "$skipped" \
+    '. + [{source: $src, reason: $reason, skipped: $skipped}]' \
+    <<< "$WARNINGS_JSON")
+}
 ```
+
+**Warning-emission contract (enforced at every canonical-warning
+site in Phases 1-4).** Each `echo "[warning: ...]"` call is paired
+with a `_qa_plan_record_warning "{source}" "{reason}" "{skipped}"`
+call immediately after, using the same three segments. Example:
+
+```bash
+echo "[warning: codex -- not authenticated (run 'codex login') -- falling back to Claude subagent for cross-model pass]"
+_qa_plan_record_warning "codex" "not authenticated (run 'codex login')" "falling back to Claude subagent for cross-model pass"
+```
+
+The `echo` is user-visible; the `_qa_plan_record_warning` call
+updates `$WARNINGS_JSON`, which Phase 6a's `jq -n` analytics emitter
+consumes via `--argjson warnings "$WARNINGS_JSON"`. Every warning
+enumerated in Phases 1-4 prose above (no git repo, empty diff,
+stale DRAFT, CLAUDE.md missing, design doc missing, diff size, etc.)
+follows this pattern.
 
 If the preamble prints `SPAWNED_SESSION: true`, do NOT call
 `AskUserQuestion` for any interactive step in later phases. Auto-
