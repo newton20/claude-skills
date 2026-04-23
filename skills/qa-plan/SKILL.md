@@ -369,9 +369,9 @@ Coverage: `AskUserQuestion auto-resolved (diff-size guard → proceed with full 
 
 ### 1g) Surface auto-detection + user confirmation
 
-Auto-detect the primary surface from the diff file paths. The
-path-pattern rules live in `references/taxonomies.md` under the
-"Surface detection rules" table; read that file before classifying.
+Read `references/taxonomies.md` for the per-surface axis list and
+spec/impl boundary before classifying. The path-pattern rules live
+in that file under the "Surface detection rules" table.
 Representative rules:
 
 | Diff path pattern                         | Detected surface |
