@@ -1,7 +1,7 @@
 ---
 title: "feat: add /qa-plan skill for surface-aware QA test plan authoring"
 type: feat
-status: active
+status: complete
 date: 2026-04-22
 origin: ~/.gstack/projects/claude-skills/REDMOND+dunliu-master-design-20260422-113136.md
 deepened: 2026-04-22
