@@ -9,6 +9,7 @@ Each skill is LLM-executed instruction prose (no compiled parser, no runtime). T
 | Skill | Status | What it does |
 |---|---|---|
 | [`session-handoff`](skills/session-handoff/SKILL.md) | v0.1 shipped | Generates role-aware, structured handoff prompts between agent sessions. Captures git state, active plans, checkpoints, and conversation context into a self-contained prompt a fresh session can act on without re-discovery. Supports 5 message types (`handoff`, `brief`, `assign`, `review`, `report`) × 5 target roles (`coord`, `impl`, `qa`, `reviewer`, `general`) = 25 legal combinations via a DRY base template. |
+| [`qa-plan`](skills/qa-plan/SKILL.md) | v0.1 shipped | Surface-aware QA test plan author. Classifies the just-implemented change across a 5-surface taxonomy (web / cli / library / service / claude-skill), drafts an impl-aware test plan, reviews it with 4 adversarial personas + 1 spec-only gap reviewer + a cross-model codex pass (all dispatched in a single parallel block), writes the REVIEWED plan to disk, and prints a `/session-handoff assign qa` command wrapped in a machine-parseable `<qa-plan-handoff>` block. Context separation via planned handoff, not heroics — three HARD GATES prevent test execution, test code generation, and source modification inside the planning session. |
 
 More skills coming. Each one gets its own `skills/<name>/` directory with a `SKILL.md` entry point and optional `references/` for split-out content.
 
