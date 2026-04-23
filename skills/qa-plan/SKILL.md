@@ -572,7 +572,12 @@ for a terminal-state output file, per simplicity review).
 USER_TAG="${USER:-unknown}"
 MIRROR_DIR="$HOME/.gstack/projects/$SLUG"
 if mkdir -p "$MIRROR_DIR" 2>/dev/null; then
-  MIRROR_PATH="$MIRROR_DIR/${USER_TAG}-${_BRANCH}-qa-plan-${_TS}.md"
+  # Use $_BRANCH_SLUG, not $_BRANCH. Branch names with slashes (e.g.
+  # 'dogfood/qa-plan-v0.1-target') become subdirs under mkdir -p
+  # semantics — observed live in DV1 run 2026-04-23, mirror write
+  # failed silently. The Preamble already computed _BRANCH_SLUG via
+  # sed 's|/|-|g' for the primary plan path; use it here too.
+  MIRROR_PATH="$MIRROR_DIR/${USER_TAG}-${_BRANCH_SLUG}-qa-plan-${_TS}.md"
   if cp "$PLAN_PATH" "$MIRROR_PATH" 2>/dev/null; then
     echo "MIRROR_PATH: $MIRROR_PATH"
   else
