@@ -1,15 +1,17 @@
 # Personas (qa-plan)
 
-Four adversarial review personas for Phase 3. Each runs as a Claude
-Code subagent with `tools: ["Bash", "Read", "Grep"]` and produces
-markdown in the same output shape. The shared skeleton below keeps
-the output contract DRY; each persona section below it prepends a
-unique attack-vector block to that skeleton.
+Four adversarial review personas for Phase 3. Each runs as a
+`general-purpose` Claude Code subagent with **tool-intent** for
+`Bash`, `Read`, `Grep` expressed in the prompt (not enforced via
+the Agent tool — see SKILL.md Phase 7a tool-restriction honesty
+note) and produces markdown in the same output shape. The shared
+skeleton below keeps the output contract DRY; each persona section
+below it prepends a unique attack-vector block to that skeleton.
 
 A fifth reviewer (spec-only gap finder) is authored inline in
-SKILL.md Phase 3 (Unit 7b), not here — it has a different tool set
-(`["Read", "Grep"]`, no Bash) and a different prompt shape. This
-file covers only the 4 adversarial personas.
+SKILL.md Phase 3 (Unit 7b), not here — it has different tool
+intent (`Read`, `Grep` only — no `Bash`) and a different prompt
+shape. This file covers only the 4 adversarial personas.
 
 Regression Hunter was considered for v0.1 and deferred to v0.2
 (git-log archaeology produces signal:noise below the bar until we
@@ -142,10 +144,16 @@ Attack vector block:
   response together with the spec-only gap reviewer (5 Agent calls
   in one block). Sequential dispatch breaks parallelism; see
   `anthropics/claude-code#29181` for the 1-of-N hallucination bug.
-- Pass `tools: ["Bash", "Read", "Grep"]` explicitly on every
-  persona Agent call. Subagents inherit the parent toolset by
-  default; prose restrictions are unenforceable. The spec-only
-  reviewer uses `tools: ["Read", "Grep"]` (no Bash).
+- Express tool intent in the persona prompt preamble: "You have
+  access to Bash, Read, and Grep. Do not attempt to use other
+  tools." **Claude Code's `Agent` tool has no `tools:` parameter**
+  — tool restriction via the call is not possible with the vanilla
+  `general-purpose` subagent_type. Prose/intent is best-effort
+  (defense-in-depth, not hard sandbox); the spec-only reviewer
+  uses "Read and Grep only — no Bash" as its tool-intent text.
+  A project-defined subagent with `tools:` in frontmatter is the
+  v0.2 path to actual enforcement (see SKILL.md Phase 7a for the
+  honesty note + v0.2 option).
 - Count received outputs after dispatch. If fewer than the
   expected N return, emit the canonical
   `[warning: parallel dispatch -- expected {N} -- received {M} -- survivors only]`
