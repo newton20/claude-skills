@@ -572,12 +572,18 @@ for a terminal-state output file, per simplicity review).
 USER_TAG="${USER:-unknown}"
 MIRROR_DIR="$HOME/.gstack/projects/$SLUG"
 if mkdir -p "$MIRROR_DIR" 2>/dev/null; then
-  # Use $_BRANCH_SLUG, not $_BRANCH. Branch names with slashes (e.g.
-  # 'dogfood/qa-plan-v0.1-target') become subdirs under mkdir -p
-  # semantics — observed live in DV1 run 2026-04-23, mirror write
-  # failed silently. The Preamble already computed _BRANCH_SLUG via
-  # sed 's|/|-|g' for the primary plan path; use it here too.
-  MIRROR_PATH="$MIRROR_DIR/${USER_TAG}-${_BRANCH_SLUG}-qa-plan-${_TS}.md"
+  # Derive the mirror filename from the primary path's basename so the
+  # Phase 2c -2 collision suffix propagates automatically. Without this,
+  # two same-second /qa-plan runs would get distinct -2 primary paths
+  # but identical mirror filenames, and the second mirror silently
+  # overwrites the first (QA finding 2026-04-23, Top-10 case #4,
+  # sev×lik=12, source: Data Corruptor + Race Demon).
+  #
+  # basename($PLAN_PATH) is '{TS}-{BRANCH_SLUG}-qa-plan.md' or
+  # '{TS}-{BRANCH_SLUG}-qa-plan-2.md' depending on collision state.
+  # Prepending ${USER_TAG}- keeps cross-user discovery under
+  # ~/.gstack/projects/{slug}/ readable.
+  MIRROR_PATH="$MIRROR_DIR/${USER_TAG}-$(basename "$PLAN_PATH")"
   if cp "$PLAN_PATH" "$MIRROR_PATH" 2>/dev/null; then
     echo "MIRROR_PATH: $MIRROR_PATH"
   else
