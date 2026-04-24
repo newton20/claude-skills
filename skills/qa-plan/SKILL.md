@@ -184,7 +184,13 @@ _qa_plan_emit_failure_analytics() {
   local phase="$1"
   command -v jq >/dev/null 2>&1 || return 0
   mkdir -p ~/.gstack/analytics 2>/dev/null || return 0
-  jq -n \
+  # -nc (compact) is load-bearing: jq defaults to pretty-print, which
+  # produces multi-line JSON that breaks the JSONL one-object-per-line
+  # contract documented in references/analytics-schema.md. Observed in
+  # the 2026-04-23 run #2 dogfood: all prior analytics entries were
+  # multi-line and downstream 'jq -r select(...)' consumers silently
+  # failed. Do NOT drop the -c flag.
+  jq -nc \
     --arg skill "qa-plan" \
     --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --arg surface "${SURFACE:-unknown}" \
@@ -1414,7 +1420,13 @@ if command -v jq >/dev/null 2>&1; then
   OUTCOME="success"  # Set to "error" + FAILURE_PHASE in the abort
                      # paths of earlier phases; see 6c.
 
-  jq -n \
+  # -nc (compact) is load-bearing: jq defaults to pretty-print, which
+  # produces multi-line JSON that breaks the JSONL one-object-per-line
+  # contract documented in references/analytics-schema.md. Observed in
+  # the 2026-04-23 run #2 dogfood: 238 prior entries were multi-line
+  # and downstream 'jq -r select(...)' consumers silently failed. Do
+  # NOT drop the -c flag.
+  jq -nc \
     --arg skill "qa-plan" \
     --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --arg surface "$SURFACE" \

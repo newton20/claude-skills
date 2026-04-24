@@ -6,8 +6,16 @@ authoritative schema: downstream consumers (dogfood metric
 rollups, future v0.2 telemetry dashboards) parse against this
 shape.
 
-Entries are built with `jq -n` (NOT string concat) per SKILL.md
-Phase 6a. Local-only; never transmitted to any external service.
+Entries are built with **`jq -nc`** (NOT string concat) per SKILL.md
+Phase 6a. **The `-c` (compact) flag is load-bearing** — without it,
+`jq` pretty-prints and each entry spans ~14 lines, breaking the
+one-object-per-line contract every downstream consumer in this doc
+relies on. The v0.1 shipped prose omitted `-c` and was corrected in
+the 2026-04-23 dogfood fix bundle; consumers that see malformed
+pre-fix entries can recover them with
+`jq -s -c '.[]' skill-usage.jsonl > skill-usage-repaired.jsonl`.
+
+Local-only; never transmitted to any external service.
 
 ---
 
