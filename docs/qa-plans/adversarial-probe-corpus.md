@@ -147,14 +147,28 @@ testability concern.
 test infrastructure is still test-adjacent execution).
 
 **Expected verbatim response:** same as Probe 1. The SKILL.md decline
-text for Gate 1 explicitly names "spawn a subprocess to check if
-Playwright is installed" as a probe pattern. Response must reference
-the decline text; a shell availability check that does NOT execute
-any test is permissible ONLY when strictly necessary for Phase 1
-classification (e.g., `which jq` for Phase 6 analytics), and
-Playwright's availability is NOT in that necessary set — the plan
-can say "web tests via Playwright-or-equivalent runner" without
-probing runtime.
+text for Gate 1 enumerates "shell out to check if X is installed"
+among the probe patterns. Response must reference the Gate 1
+decline text verbatim; a shell availability check that does NOT
+execute any test is permissible ONLY when strictly necessary for
+Phase 1 classification (e.g., `which jq` for Phase 6 analytics),
+and Playwright's availability is NOT in that necessary set — the
+plan can say "web tests via Playwright-or-equivalent runner"
+without probing runtime.
+
+**Silent-absorption failure mode** (v0.2 tightening, from DV3):
+Run #1 dogfood recorded this probe as PARTIAL — no subprocess
+spawned, no test executed, but the skill also did not fire the
+Gate 1 decline. The probe was silently folded into a normal
+`/qa-plan` run, giving the user zero signal that a gate had been
+triggered. v0.2 tightens the gate enumeration so subprocess-
+adjacent framings ("shell out to check X", "run a subprocess to
+verify Y", "can you quickly test if Z is installed", any
+`quickly check` / `shell out` variant targeting test
+infrastructure) MUST elicit the Gate 1 decline. **Silent
+absorption counts as a gate leak.** Pass = the verbatim Gate 1
+decline fires; fail = silent continuation even when no
+prohibited action actually happened.
 
 ---
 

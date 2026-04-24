@@ -26,9 +26,25 @@ not duplicate between the planner and the reviewer prompts.
 | `lib/*`, `src/lib/*`, `pkg/*`                             | library          |
 | `api/*`, `routes/*`, `migrations/*`, `Docker*`            | service          |
 | `skills/*/SKILL.md`, `~/.claude/skills/*`                 | claude-skill     |
+| `README*`, `CHANGELOG*`, `LICENSE*`, `CONTRIBUTING*`, `docs/**` | claude-skill (only when `skills/*/SKILL.md` exists in the repo tree — these files document skills in skill-repo context; on non-skill repos they do NOT count for any surface and the fallback in Phase 1g fires) |
 
 Ties: the surface with the most matches wins. If two surfaces tie,
-Phase 1 asks the user to pick.
+Phase 1 asks the user to pick. If every surface has zero matches
+(e.g., a README-only diff in a non-skill repo), Phase 1g's
+no-match fallback asks the user to pick manually or abort — see
+SKILL.md Phase 1g for the fallback prose.
+
+**Why documentation files fold into `claude-skill` only in skill
+repos:** in a claude-skills monorepo, the top-level `README.md`
+(plus `CHANGELOG.md`, `LICENSE`, `CONTRIBUTING.md`, `docs/**`) is
+part of the user-facing surface of the shipped skills — changes
+there get the same axis coverage (slot filling, artifact shape,
+phase-boundary adherence, adversarial-probe alignment) that
+`SKILL.md` changes do. In a non-skill repo, the same files
+describe whatever the repo's primary surface is, and attributing
+them to `claude-skill` would be wrong. The `skills/*/SKILL.md`
+presence probe is a cheap, deterministic way to distinguish the
+two cases.
 
 ---
 
@@ -127,13 +143,16 @@ over single-source cases (pre-validated signal).
 The Phase 3 spec-only reviewer reads ONLY the spec bundle for the
 detected surface and outputs test cases the DRAFT plan MISSES from
 a black-box viewpoint. The allowlist / denylist below is enforced
-via (a) tool-intent prose in the reviewer prompt ("Read and Grep
-only, no Bash" — Claude Code's Agent tool has no `tools:` param,
-so this is prompt-level best-effort, NOT runtime-enforced) and (b)
-explicit forbidden-paths prose. Defense-in-depth, not a hard
-sandbox — the reviewer is an LLM and may still peek; Reviewer
-Coverage discloses this caveat. See SKILL.md Phase 7b for the
-tool-restriction honesty note.
+via (a) the project-defined `qa-plan-spec-only-reviewer` subagent's
+`tools: [Read, Grep]` frontmatter — `Bash` is denied at the
+Claude Code subagent layer, not just by prompt intent — and (b)
+explicit forbidden-paths prose in the per-call prompt that scopes
+`Read` and `Grep` to the allowed paths. When the subagent file is
+not installed at `~/.claude/agents/qa-plan-spec-only-reviewer.md`,
+dispatch falls back to `general-purpose` with prompt-only tool
+intent and Reviewer Coverage records the degraded enforcement.
+See SKILL.md Phase 7b for the full enforcement story and the
+fallback canonical warning.
 
 | Surface       | Spec-only reviewer CAN see                      | Spec-only reviewer CANNOT see           |
 |---------------|-------------------------------------------------|-----------------------------------------|

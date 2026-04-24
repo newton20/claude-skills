@@ -59,6 +59,73 @@ Then invoke from any Claude Code session:
 
 See the skill's `SKILL.md` for full argument grammar and worked examples.
 
+## Install `/qa-plan` subagents (v0.2+)
+
+`/qa-plan` v0.2 ships **project-defined Claude Code subagents** at
+`skills/qa-plan/agents/` — five files, one per reviewer (four
+adversarial personas + one spec-only gap reviewer). Each file's
+frontmatter declares `tools:` which Claude Code enforces at
+subagent dispatch, so persona runs are restricted to `[Bash, Read,
+Grep]` and the spec-only reviewer is restricted to `[Read, Grep]`
+without prompt-level hedging.
+
+Install them alongside the skill at `~/.claude/agents/`:
+
+**macOS / Linux — live link (recommended for contributors):**
+
+```bash
+mkdir -p ~/.claude/agents
+for f in skills/qa-plan/agents/*.md; do
+  ln -sf "$(pwd)/$f" "$HOME/.claude/agents/$(basename "$f")"
+done
+```
+
+**macOS / Linux — one-time copy:**
+
+```bash
+mkdir -p ~/.claude/agents
+cp skills/qa-plan/agents/*.md ~/.claude/agents/
+```
+
+**Windows (PowerShell) — junctions per file aren't supported for
+single files; use copy or `mklink` per-file:**
+
+```powershell
+New-Item -ItemType Directory -Force -Path "$HOME\.claude\agents" | Out-Null
+Copy-Item skills\qa-plan\agents\*.md "$HOME\.claude\agents\"
+```
+
+**Windows (git-bash) — copy:**
+
+```bash
+mkdir -p ~/.claude/agents
+cp skills/qa-plan/agents/*.md ~/.claude/agents/
+```
+
+**Verify:**
+
+```bash
+ls ~/.claude/agents/qa-plan-*.md
+# qa-plan-persona-confused-user.md
+# qa-plan-persona-data-corruptor.md
+# qa-plan-persona-race-demon.md
+# qa-plan-persona-prod-saboteur.md
+# qa-plan-spec-only-reviewer.md
+```
+
+**Re-copy after each pull.** If you used Option B (one-time copy)
+for the skill, do the same for the subagents — copy-installed
+files stay frozen until you copy again. Option A (live link) keeps
+the installed subagent files tracking the repo; re-install only
+when new subagent files land.
+
+**Fallback behavior:** `/qa-plan` still works if the subagents are
+not installed — Phase 3 falls back to `general-purpose` dispatch
+with prompt-level tool intent and emits a canonical warning per
+missing subagent. Reviewer Coverage in the REVIEWED plan records
+the degraded enforcement. Install the subagents for the stronger
+guarantee.
+
 ## Development rhythm
 
 Skills here ship through a deliberate cycle that leaves receipts at every step:
