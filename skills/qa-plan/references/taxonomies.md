@@ -127,10 +127,13 @@ over single-source cases (pre-validated signal).
 The Phase 3 spec-only reviewer reads ONLY the spec bundle for the
 detected surface and outputs test cases the DRAFT plan MISSES from
 a black-box viewpoint. The allowlist / denylist below is enforced
-via (a) `tools: ["Read", "Grep"]` on the Agent dispatch and (b)
-explicit forbidden-paths prose in the reviewer prompt. Defense-in-
-depth, not a hard sandbox — the reviewer is an LLM and may still
-peek; Reviewer Coverage discloses this caveat.
+via (a) tool-intent prose in the reviewer prompt ("Read and Grep
+only, no Bash" — Claude Code's Agent tool has no `tools:` param,
+so this is prompt-level best-effort, NOT runtime-enforced) and (b)
+explicit forbidden-paths prose. Defense-in-depth, not a hard
+sandbox — the reviewer is an LLM and may still peek; Reviewer
+Coverage discloses this caveat. See SKILL.md Phase 7b for the
+tool-restriction honesty note.
 
 | Surface       | Spec-only reviewer CAN see                      | Spec-only reviewer CANNOT see           |
 |---------------|-------------------------------------------------|-----------------------------------------|
