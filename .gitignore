@@ -5,6 +5,10 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Claude Code + scratch dirs (session-local state; never belongs in repo)
+.claude/
+.context/
+
 # Secrets (don't accidentally commit local creds)
 .env
 .env.local
