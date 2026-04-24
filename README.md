@@ -101,9 +101,12 @@ When review surfaces a non-blocking follow-up, capture it as a todo at `docs/tod
 002-complete-p3-boundary-worked-cases-phase-4g.md
 003-complete-p3-session-handoff-placeholder-vs-literal-sanitization.md
 004-complete-p3-recheck-short-prompt-cap-after-placeholder-lint.md
+005-complete-p2-verify-session-handoff-report-coord-route.md
+006-in-progress-p3-ab-test-qa-plan-vs-one-hop-during-dogfood.md
+007-in-progress-p3-author-human-test-list-for-session-handoff-v0.1.md
 ```
 
-All four completed — session-handoff v0.1 polish cycle closed. Next todos will appear here as review cycles surface them.
+Todos 001-005 complete. Todos 006-007 unblocked by `qa-plan` v0.1 merge and now gating on dogfood runs (see `docs/dogfood/001-qa-plan-v0.1-findings.md`).
 
 ## Design principles
 

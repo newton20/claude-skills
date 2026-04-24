@@ -1,9 +1,10 @@
 ---
-status: ready
+status: in-progress
 priority: p3
 issue_id: "007"
 tags: [qa-plan, eval, calibration, dogfood]
 dependencies: []
+unblocked_by: ["PR #4 — qa-plan v0.1 merged 2026-04-23"]
 ---
 
 # Author a human-generated test list for session-handoff v0.1 as eval baseline

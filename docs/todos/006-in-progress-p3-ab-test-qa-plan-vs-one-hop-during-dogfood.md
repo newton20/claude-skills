@@ -1,9 +1,10 @@
 ---
-status: ready
+status: in-progress
 priority: p3
 issue_id: "006"
 tags: [qa-plan, dogfood, eval, architecture]
 dependencies: ["005"]
+unblocked_by: ["PR #4 — qa-plan v0.1 merged 2026-04-23"]
 ---
 
 # A/B the /qa-plan pipeline vs codex's "one-hop" alternative during v0.1 dogfood
