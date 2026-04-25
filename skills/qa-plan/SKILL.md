@@ -359,6 +359,7 @@ instead of the correct "not in a repository" diagnosis.
 ```bash
 if ! command -v git >/dev/null 2>&1 || ! git rev-parse --git-dir >/dev/null 2>&1; then
   echo "[warning: git -- not in a repository -- /qa-plan cannot classify surface, skipped]"
+  _qa_plan_record_warning "git" "not in a repository" "/qa-plan cannot classify surface, skipped"
   _qa_plan_emit_failure_analytics "phase_1"
   exit 1
 fi
@@ -425,6 +426,7 @@ fi
 # All four empty: abort with canonical warning.
 if [ -z "$_DIFF_STAT" ]; then
   echo "[warning: no diff -- neither committed, staged, working-tree, nor merge-diff changes -- /qa-plan skipped]"
+  _qa_plan_record_warning "no diff" "neither committed, staged, working-tree, nor merge-diff changes" "/qa-plan skipped"
   _qa_plan_emit_failure_analytics "phase_1"
   exit 1
 fi
@@ -463,6 +465,7 @@ STALE_DRAFTS=$(find docs/qa-plans -maxdepth 1 -type f -name "*-${_BRANCH_SLUG}-q
 if [ -n "$STALE_DRAFTS" ]; then
   while IFS= read -r stale; do
     echo "[warning: stale DRAFT found at $stale -- from interrupted prior run -- starting fresh; delete manually if undesired]"
+    _qa_plan_record_warning "stale DRAFT found at $stale" "from interrupted prior run" "starting fresh; delete manually if undesired"
   done <<< "$STALE_DRAFTS"
 fi
 ```
@@ -476,6 +479,7 @@ if [ -f CLAUDE.md ]; then
   echo "CLAUDE.md: found"
 else
   echo "[warning: CLAUDE.md -- file not present -- proceeding without project context]"
+  _qa_plan_record_warning "CLAUDE.md" "file not present" "proceeding without project context"
 fi
 ```
 
@@ -492,6 +496,7 @@ if [ -n "$DESIGN_DOC" ]; then
   echo "DESIGN_DOC: $DESIGN_DOC"
 else
   echo "[warning: design doc -- no *${_BRANCH}-design-*.md under ~/.gstack/projects/$SLUG -- proceeding without design context]"
+  _qa_plan_record_warning "design doc" "no *${_BRANCH}-design-*.md under ~/.gstack/projects/$SLUG" "proceeding without design context"
 fi
 ```
 
@@ -719,6 +724,7 @@ if [ -e "$PLAN_PATH" ]; then
   ORIG="$QA_PLAN_DIR/${_TS}-${_BRANCH_SLUG}-qa-plan.md"
   DUP="$QA_PLAN_DIR/${_TS}-${_BRANCH_SLUG}-qa-plan-2.md"
   echo "[warning: filename collision -- $ORIG and $DUP both exist -- aborting to avoid data loss]"
+  _qa_plan_record_warning "filename collision" "$ORIG and $DUP both exist" "aborting to avoid data loss"
   _qa_plan_emit_failure_analytics "phase_2"
   exit 1
 fi
@@ -775,10 +781,12 @@ if mkdir -p "$MIRROR_DIR" 2>/dev/null; then
     echo "MIRROR_PATH: $MIRROR_PATH"
   else
     echo "[warning: mirror -- cp to $MIRROR_PATH failed -- plan still written to $PLAN_PATH]"
+    _qa_plan_record_warning "mirror" "cp to $MIRROR_PATH failed" "plan still written to $PLAN_PATH"
     MIRROR_PATH=""
   fi
 else
   echo "[warning: mirror -- mkdir $MIRROR_DIR failed -- plan still written to $PLAN_PATH]"
+  _qa_plan_record_warning "mirror" "mkdir $MIRROR_DIR failed" "plan still written to $PLAN_PATH"
   MIRROR_PATH=""
 fi
 ```
@@ -833,6 +841,11 @@ threshold gate).
 # claude-skill surface; full resolution lives in the surface-specific
 # allowlist prose).
 SPEC_BUNDLE_BYTES=0
+# Run #4 codex finding (2026-04-25): default to "implemented"; the
+# unimpl-surface case branch flips this to "not-implemented" so the
+# starvation gate below can emit an honest warning instead of silently
+# skipping the spec-only reviewer with a misleading "0 tokens" reason.
+SPEC_BUNDLE_IMPL_STATUS="implemented"
 case "$SURFACE" in
   claude-skill)
     # Expanded in v0.2.1 to mirror Unit 3's surface-detection
@@ -851,16 +864,26 @@ case "$SURFACE" in
     fi
     ;;
   web|cli|library|service)
-    # Each surface's allowlist is enumerated in
-    # references/taxonomies.md. Sum bytes of matching files.
-    # (Full implementation extends this case block.)
+    # Run #4 codex finding (2026-04-25): per-surface bundle resolution
+    # is not implemented in v0.2.2; v0.3 implements the allowlists
+    # enumerated in references/taxonomies.md. Mark the status so the
+    # gate below emits an honest warning rather than the misleading
+    # "0 tokens" starvation message.
+    SPEC_BUNDLE_IMPL_STATUS="not-implemented"
     ;;
 esac
 SPEC_BUNDLE_TOKENS=$((SPEC_BUNDLE_BYTES / 4))
 SPEC_ONLY_THRESHOLD=1500
-if [ "$SPEC_BUNDLE_TOKENS" -lt "$SPEC_ONLY_THRESHOLD" ]; then
+if [ "$SPEC_BUNDLE_IMPL_STATUS" = "not-implemented" ]; then
+  # Run #4 codex finding (2026-04-25): honest skip -- the cause is
+  # missing v0.2.2 implementation, not genuine spec starvation.
+  SPEC_ONLY_SKIP=true
+  echo "[warning: spec-only reviewer -- spec bundle resolution not implemented for $SURFACE surface in v0.2.2 -- skipping; v0.3 implements per-surface bundles]"
+  _qa_plan_record_warning "spec-only reviewer" "spec bundle resolution not implemented for $SURFACE surface in v0.2.2" "skipping; v0.3 implements per-surface bundles"
+elif [ "$SPEC_BUNDLE_TOKENS" -lt "$SPEC_ONLY_THRESHOLD" ]; then
   SPEC_ONLY_SKIP=true
   echo "[warning: spec-only reviewer -- insufficient spec context ($SPEC_BUNDLE_TOKENS tokens under $SPEC_ONLY_THRESHOLD threshold) -- skipping, relying on impl-aware draft + personas + codex for coverage]"
+  _qa_plan_record_warning "spec-only reviewer" "insufficient spec context ($SPEC_BUNDLE_TOKENS tokens under $SPEC_ONLY_THRESHOLD threshold)" "skipping, relying on impl-aware draft + personas + codex for coverage"
 else
   SPEC_ONLY_SKIP=false
 fi
@@ -1043,6 +1066,7 @@ proceed with survivors:
 # parallel-dispatch result.
 if [ "$N_RECEIVED" -lt "$EXPECTED_REVIEWERS" ]; then
   echo "[warning: parallel dispatch -- expected $EXPECTED_REVIEWERS reviewer outputs, received $N_RECEIVED -- some reviewers were not actually invoked, proceeding with survivors]"
+  _qa_plan_record_warning "parallel dispatch" "expected $EXPECTED_REVIEWERS reviewer outputs, received $N_RECEIVED" "some reviewers were not actually invoked, proceeding with survivors"
 fi
 ```
 
@@ -1195,6 +1219,7 @@ Agent dispatch, so it runs sequentially.
 if ! command -v codex >/dev/null 2>&1; then
   echo "[Phase 3 codex] codex binary not on PATH; skipping directly to Claude-subagent fallback."
   echo "[warning: codex -- binary not on PATH -- skipping codex exec, falling back to Claude subagent for cross-model pass]"
+  _qa_plan_record_warning "codex" "binary not on PATH" "skipping codex exec, falling back to Claude subagent for cross-model pass"
   CODEX_AVAILABLE=false
 else
   CODEX_AVAILABLE=true
@@ -1212,6 +1237,7 @@ if [ "$CODEX_AVAILABLE" = true ]; then
   if ! codex login status >/dev/null 2>&1; then
     echo "[Phase 3 codex] Codex not authenticated (run 'codex login'); falling back to Claude subagent..."
     echo "[warning: codex -- not authenticated (run 'codex login') -- falling back to Claude subagent for cross-model pass]"
+    _qa_plan_record_warning "codex" "not authenticated (run 'codex login')" "falling back to Claude subagent for cross-model pass"
     CODEX_AUTH=false
   else
     CODEX_AUTH=true
@@ -1305,6 +1331,7 @@ TMPSIZE=$(wc -c < "$TMPPROMPT")
 if [ "$TMPSIZE" -gt 32768 ]; then
   echo "[Phase 3 codex] Prompt exceeds 32 KB; skipping to stay under codex token cap..."
   echo "[warning: codex -- prompt size $TMPSIZE bytes > 32 KB cap -- skipping codex, falling back to Claude subagent]"
+  _qa_plan_record_warning "codex" "prompt size $TMPSIZE bytes > 32 KB cap" "skipping codex, falling back to Claude subagent"
   CODEX_SKIP=true
 fi
 ```
@@ -1327,6 +1354,7 @@ if [ "$CODEX_AVAILABLE" = true ]; then
   else
     CODEX_WEB_SEARCH_FLAG=""
     echo "[warning: codex -- --enable web_search_cached flag not present in 'codex exec --help' -- running codex without web search]"
+    _qa_plan_record_warning "codex" "--enable web_search_cached flag not present in 'codex exec --help'" "running codex without web search"
   fi
 fi
 ```
@@ -1358,11 +1386,13 @@ if [ "$CODEX_AVAILABLE" = true ] && [ "$CODEX_AUTH" = true ] && [ "$CODEX_SKIP" 
     echo "[Phase 3 codex] Codex timed out, killing any surviving child processes and falling back to Claude subagent..."
     pkill -P $$ codex 2>/dev/null || true
     echo "[warning: codex -- exec timed out after 5 minutes -- falling back to Claude subagent for cross-model pass]"
+    _qa_plan_record_warning "codex" "exec timed out after 5 minutes" "falling back to Claude subagent for cross-model pass"
     CODEX_RAN=false
   else
     echo "[Phase 3 codex] Codex exec failed (exit $CODEX_EXIT); falling back to Claude subagent..."
     pkill -P $$ codex 2>/dev/null || true
     echo "[warning: codex -- exec failed with exit $CODEX_EXIT -- falling back to Claude subagent for cross-model pass]"
+    _qa_plan_record_warning "codex" "exec failed with exit $CODEX_EXIT" "falling back to Claude subagent for cross-model pass"
     CODEX_RAN=false
   fi
 fi
@@ -1402,6 +1432,7 @@ if [ "$CODEX_RAN" != true ]; then
   else
     echo "[Phase 3 codex] Both cross-model paths failed; continuing with persona-only review. Note: single-model coverage."
     echo "[warning: cross-model review -- codex timeout + subagent failure -- persona-only coverage]"
+    _qa_plan_record_warning "cross-model review" "codex timeout + subagent failure" "persona-only coverage"
   fi
 fi
 ```
@@ -1581,6 +1612,7 @@ REVIEWED file to the same mirror path (overwrite):
 if [ -n "$MIRROR_PATH" ] && [ -d "$(dirname "$MIRROR_PATH")" ]; then
   if ! cp "$PLAN_PATH" "$MIRROR_PATH" 2>/dev/null; then
     echo "[warning: mirror update -- cp to $MIRROR_PATH failed -- mirror now stale; REVIEWED plan is authoritative at $PLAN_PATH]"
+    _qa_plan_record_warning "mirror update" "cp to $MIRROR_PATH failed" "mirror now stale; REVIEWED plan is authoritative at $PLAN_PATH"
   fi
 fi
 ```
@@ -1753,6 +1785,7 @@ if command -v jq >/dev/null 2>&1; then
     >> "$ANALYTICS_FILE"
 else
   echo "[warning: analytics -- jq binary not on PATH -- skipping ~/.gstack/analytics/skill-usage.jsonl append]"
+  _qa_plan_record_warning "analytics" "jq binary not on PATH" "skipping ~/.gstack/analytics/skill-usage.jsonl append"
 fi
 ```
 

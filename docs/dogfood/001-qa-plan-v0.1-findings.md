@@ -10,7 +10,8 @@ dv1_run: docs/qa-plans/20260423-095733-dogfood-qa-plan-v0.1-target-qa-plan.md
 run2_self_review: docs/qa-plans/20260423-221948-master-qa-plan.md
 run3_post_fix: docs/qa-plans/20260423-232637-test-qa-plan-slug-verify-qa-plan.md
 fix_pr: "#6 (fix/qa-plan-p0-from-dv1) — 5 bug fixes + 1 honesty fix + findings record (merged d3e7609)"
-criterion4_tally: "3 of 3 consecutive PASS — v0.2 codex-keep LOCKED IN"
+criterion4_tally: "4 of 4 consecutive PASS — codex-keep locked, extended through v0.2.2"
+v0_2_2_pr: "fix/qa-plan-v0.2.2 (commit 4ed3657) — spec-bundle stub honesty + warning emission audit"
 ---
 
 # `/qa-plan` v0.1 Dogfood Findings
@@ -726,10 +727,88 @@ to reclaim ~80 lines.
   mirror-write path-traversal). Add when dogfood shows the v0.1
   corpus is insufficient.
 
-### Run #4 dogfood (pending)
+### Run #4 dogfood (recorded 2026-04-25)
 
-v0.2 is shipped after this section lands; Run #4 dogfood executes
-the v0.2 skill against master to produce a fresh plan + analytics
-entry. Compare against Runs #1-3 for any regressions; flag P0 if
-any canonical warning shape drifts, any hard gate starts silent-
-absorbing, or any analytics entry fails the JSONL contract.
+`/qa-plan` ran against master post-PR-#9-merge (commit `dc66ba1`).
+**Diff source: `merge-diff HEAD^1..HEAD`** — Phase 1b's Unit 4
+fallback fired on the fresh-master post-merge state (the codified
+path for "review the merge after merge"). Plan landed at
+`docs/qa-plans/20260424-205535-master-qa-plan.md` (100 cases across
+5 axes); mirror at
+`~/.gstack/projects/claude-skills/dunliu-20260424-205535-master-qa-plan.md`
+— `dunliu-` prefix confirms Unit 1's `$USERNAME` fallback (was
+`unknown-` in Run #3).
+
+**v0.2 fix verifications (all PASS at runtime):**
+
+| Fix | Run #4 evidence |
+|-----|-----------------|
+| Unit 1 — `$USER_TAG` Windows fallback | Mirror filename starts `dunliu-...`, not `unknown-...` |
+| Unit 2 — `MSYS_NO_PATHCONV=1` | Top-10 case verifies all 6 `jq` sites wrapped |
+| Unit 3 — README/CHANGELOG/docs surface counted | Surface detection: "claude-skill (13/13 paths matched)" |
+| Unit 4 — `HEAD^1..HEAD` merge-diff | Diff source: "merge-diff HEAD^1..HEAD on PR #9 merge dc66ba1" — the v0.2.1 review-fix `bd4f19b` shape, not `HEAD^1...HEAD^2` |
+| Unit 5 — Probe 7 gate tightening | Top-10 case: "Probe 7 subprocess-adjacent framing elicits verbatim Gate 1 decline including 'context separation' clause" |
+| Unit 6 — frontmatter-backed subagents | Reviewer Coverage: "personas 4/4 (frontmatter-backed [Bash, Read, Grep]); spec-only ran (frontmatter-backed [Read, Grep], 27 cases)" — install probe found all 5; runtime-confirmed enforcement |
+| Unit 7 — Recovery section | Implicit (referenced in handoff) |
+| v0.2.1 P1 — install probe (commit `bd4f19b`) | All 5 subagents resolved without fallback warnings — silent path, correct |
+
+**Codex Criterion 4 — 4-of-4 consecutive PASS.** Two codex-unique
+cases landed in Top-10. Both surfaced bugs the prose-vs-impl drift
+surface let through; both became the v0.2.2 fix scope:
+
+- **Bug A (sev×lik=16)**: spec-bundle `case` block in Phase 3a was
+  stubbed for `web|cli|library|service` surfaces. `SPEC_BUNDLE_BYTES`
+  stayed 0; the starvation gate fired silently with the misleading
+  "0 tokens" warning. Net: spec-only reviewer always silently
+  skipped on 4 of 5 surfaces.
+- **Bug B (sev×lik=16)**: 16 of 23 `echo "[warning: ...]"` sites
+  lacked the paired `_qa_plan_record_warning` call. Reviewer
+  Coverage and JSONL `warnings[]` array silently disagreed.
+
+Both were fixed in **v0.2.2** (commit `4ed3657` on
+`fix/qa-plan-v0.2.2`):
+
+- Bug A: introduced `SPEC_BUNDLE_IMPL_STATUS` variable; honest
+  warning differentiates "not-implemented" (v0.2.2) vs genuine
+  spec starvation. Both branches set `SPEC_ONLY_SKIP=true` and
+  `EXPECTED_REVIEWERS=4` consistently.
+- Bug B: audited all 23 sites; added `_qa_plan_record_warning`
+  calls at the 16 unpaired ones using verbatim canonical 3-segment
+  values. Stale-DRAFT loop emits per-path record calls.
+
+**Bonus Run #4 observation (recursion-case win):** spec-only
+reviewer's allowlist/denylist for /qa-plan reviewing /qa-plan was
+**honored at runtime** — its findings cite only `README.md`, the
+design doc, `docs/dogfood/`, and the probe corpus. Zero leak from
+`skills/qa-plan/SKILL.md`, `references/`, `agents/`, or
+`docs/plans/`. Frontmatter-backed `[Read, Grep]` enforcement is
+working as designed.
+
+**Acceptance criteria after Run #4 + v0.2.2:**
+
+- AC4 codex Criterion 4: locked (3/3 → 4/4)
+- AC6 adversarial corpus: probe 7 expected verbatim Gate 1 decline
+  is now in the gate enumeration; full DV3 re-run pending in v0.3
+- AC10 5-reviewer parallel + starvation gate: enforcement upgraded
+  from honesty-disclaimed to frontmatter-backed (Run #4
+  runtime-confirmed)
+- AC12: telemetry quality upgraded — JSONL `warnings[]` now
+  faithfully reflects emitted canonical warnings (Bug B fix)
+
+### v0.3 backlog (added during Run #4 + v0.2.2)
+
+Beyond the original v0.2 → v0.3 transitions captured above, Run
+#4's Top-10 surfaced these:
+
+- **Implement per-surface spec bundles for web/cli/library/service**
+  (the v0.2.2 Bug A "not-implemented" warning is the prompt for
+  v0.3 to actually implement them).
+- **Cross-machine paste of handoff** — session B receives
+  `<qa-plan-handoff>` on a machine where `plan_path` (absolute) is
+  unreachable; QA agent should fall through to `repo_path` or
+  embedded Top-10, never silently treat unreachable absolute as
+  "no plan." Run #4 codex case at sev×lik=16.
+- **Phase 4g mirror update cp fail after status flip** — mirror
+  retains `status: DRAFT` while primary is REVIEWED; analytics
+  records `outcome: success` AND divergence in `warnings[]` under
+  "mirror update". Run #4 Data Corruptor case at sev×lik=16.
