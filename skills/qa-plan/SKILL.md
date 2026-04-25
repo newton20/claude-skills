@@ -1655,7 +1655,7 @@ if [ -n "$MIRROR_PATH" ] && [ -d "$(dirname "$MIRROR_PATH")" ]; then
     # plan. The warning text must surface that field-level
     # divergence so analytics warnings[] disambiguates this from
     # "mirror not yet written" or "primary write failed".
-    echo "[warning: mirror update -- cp to $MIRROR_PATH failed AFTER Phase 4f status flip -- mirror retains status: DRAFT while primary at $PLAN_PATH is status: REVIEWED -- treat $PLAN_PATH as the only authoritative REVIEWED copy until the mirror is refreshed]"
+    echo "[warning: mirror update -- cp to $MIRROR_PATH failed AFTER Phase 4f status flip; mirror retains status: DRAFT while primary at $PLAN_PATH is status: REVIEWED -- treat $PLAN_PATH as the only authoritative REVIEWED copy until the mirror is refreshed]"
     _qa_plan_record_warning "mirror update" "cp to $MIRROR_PATH failed AFTER Phase 4f status flip — mirror retains status: DRAFT while primary at $PLAN_PATH is status: REVIEWED" "treat $PLAN_PATH as the only authoritative REVIEWED copy until the mirror is refreshed"
   fi
 fi

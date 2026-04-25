@@ -160,7 +160,7 @@ fallback canonical warning.
 | cli           | Common base + `man/**`                          | Source under `bin/`, `cmd/`, `cli/`, internal tests |
 | library       | Common base + `types/**/*.d.ts`, `typings/**/*.d.ts` (best-effort: cannot perfectly distinguish public from internal types in arbitrary repos; the dedup gate is the safety net) | Source under `src/`, `lib/`, `pkg/`, internals, private modules, `src/**/*.d.ts` (impl-adjacent) |
 | service       | Common base + `openapi.{yaml,yml,json}`, `swagger.{yaml,yml,json}`, `api/openapi.*`, `spec/openapi.*` | Service code, DB internals, migrations, anything under `src/`, `routes/`, `migrations/` |
-| claude-skill  | Common base + `~/.gstack/projects/**/*-design-*.md` | `skills/*/SKILL.md`, `skills/*/references/*`, `skills/*/agents/*`, `docs/plans/*` (impl-shaped) |
+| claude-skill  | Common base + `~/.gstack/projects/$SLUG/*-design-*.md` (only this project's design docs, non-recursive — matches what the SKILL.md resolver actually does) | `skills/*/SKILL.md`, `skills/*/references/*`, `skills/*/agents/*`, `docs/plans/*` (impl-shaped) |
 
 **Common base bundle** (all 5 surfaces): `README.md` / `README.rst`
 / `README.txt`, `CHANGELOG.md` / `CHANGELOG.rst`, `LICENSE` /
