@@ -405,17 +405,21 @@ fi
 # When all three standard diff sources are empty AND HEAD is a merge
 # commit (two or more parents), the user is almost certainly on a
 # branch immediately after a merge and wants to review what just
-# landed. Diff HEAD's two parents against each other: HEAD^2 is the
-# second parent (typically the feature branch that was merged in);
-# HEAD^1 is the first parent (the base branch's tip before the
-# merge). Observed in dogfood Run #2 (2026-04-23): orchestrator
-# improvised this path and produced a useful 86-case plan; this
+# landed. We diff the first parent (base before merge) against HEAD
+# itself — NOT against HEAD^2. This captures everything the merge
+# brought into master, INCLUDING any conflict-resolution edits or
+# manual fixups that exist only on the merge commit and not on
+# either parent. `HEAD^1...HEAD^2` would miss those edits and could
+# author a plan against the wrong content (codex pre-merge review
+# of PR #9 surfaced this; v0.2.1 fix). Observed in dogfood Run #2
+# (2026-04-23): orchestrator improvised the now-corrected
+# `HEAD^1..HEAD` path and produced a useful 86-case plan; this
 # block codifies it. `git rev-parse --verify HEAD^2` is the cheapest
 # merge-detection probe — exits 0 iff HEAD has two parents.
 if [ -z "$_DIFF_STAT" ] && git rev-parse --verify HEAD^2 >/dev/null 2>&1; then
   _DIFF_SOURCE="merge-diff"
-  _DIFF_STAT=$(git diff HEAD^1...HEAD^2 --stat 2>/dev/null)
-  _DIFF_PATHS=$(git diff HEAD^1...HEAD^2 --name-only 2>/dev/null)
+  _DIFF_STAT=$(git diff HEAD^1..HEAD --stat 2>/dev/null)
+  _DIFF_PATHS=$(git diff HEAD^1..HEAD --name-only 2>/dev/null)
 fi
 
 # All four empty: abort with canonical warning.
@@ -438,10 +442,12 @@ Reviewer Coverage appendix (Phase 4) with the line:
 
 When `DIFF_SOURCE` is `merge-diff`, note it with:
 
-> *"Diff source: merge-diff HEAD^1..HEAD^2 (post-merge self-review).
-> HEAD is a merge commit; the diff shown is the second parent against
-> the first — i.e., what the merged branch contributed. Applies to
-> the merge itself, not to any working-tree delta."*
+> *"Diff source: merge-diff HEAD^1..HEAD (post-merge self-review).
+> HEAD is a merge commit; the diff shown is the first parent
+> against the merge result — i.e., everything that landed on this
+> branch as part of the merge, INCLUDING any conflict-resolution
+> edits made during the merge itself. Applies to the merge state,
+> not to any working-tree delta."*
 
 ### 1c) Stale-DRAFT detection (warn-and-proceed)
 
@@ -580,10 +586,26 @@ ran and found zero matches, so the pick is intentional, not a
 surprise.
 
 **SPAWNED_SESSION behavior (no-match path):** if `OPENCLAW_SESSION`
-is set AND the no-match fallback fires, auto-pick the best-guess
-Option A if one is offered, otherwise `claude-skill` as the
-lowest-friction default (its axes cover prose / artifact content),
-and record the auto-pick in Reviewer Coverage.
+is set AND the no-match fallback fires, the right answer depends on
+context:
+
+- **If `$_IS_SKILL_REPO` is true** (the repo has `skills/*/SKILL.md`),
+  auto-pick the best-guess Option A if one is offered; otherwise
+  auto-pick `claude-skill` (its axes cover prose / artifact content
+  in skill repos). Record the auto-pick in Reviewer Coverage.
+- **If `$_IS_SKILL_REPO` is false** (no `skills/*/SKILL.md` present),
+  do NOT auto-default to `claude-skill` — that systematically routes
+  non-skill-repo plans through the wrong axes (codex pre-merge review
+  of PR #9 surfaced this; v0.2.1 fix). Instead, abort with the
+  canonical warning:
+  `[warning: surface auto-detect -- 0 matches across all 5 surfaces in a non-skill repo and SPAWNED_SESSION cannot interactively pick -- /qa-plan aborted; re-run interactively or scope the diff to a recognizable surface]`
+  and exit via `_qa_plan_emit_failure_analytics "phase_1"`. A wrong-
+  surface plan is worse than a clean failure: the QA agent would
+  then run the wrong test plan against real code.
+
+In both cases, log the no-match decision to analytics so dogfood
+metrics can track how often this fallback fires (and whether the
+surface-pattern table needs widening).
 
 **Normal path:** when at least one surface has ≥1 match, proceed
 with the standard auto-detect confirmation.
@@ -813,9 +835,20 @@ threshold gate).
 SPEC_BUNDLE_BYTES=0
 case "$SURFACE" in
   claude-skill)
-    for f in README.md "$HOME/.gstack/projects/$SLUG"/*-design-*.md; do
+    # Expanded in v0.2.1 to mirror Unit 3's surface-detection
+    # additions. Documentation files are claude-skill spec; plan
+    # docs (docs/plans/) and subagent files (skills/*/agents/) are
+    # impl-shaped and explicitly excluded.
+    for f in README.md CHANGELOG.md LICENSE CONTRIBUTING.md "$HOME/.gstack/projects/$SLUG"/*-design-*.md; do
       [ -f "$f" ] && SPEC_BUNDLE_BYTES=$((SPEC_BUNDLE_BYTES + $(wc -c < "$f" 2>/dev/null || echo 0)))
     done
+    # docs/** but excluding docs/plans/ (impl-shaped). Use find so
+    # missing dirs are silent.
+    if [ -d docs ]; then
+      while IFS= read -r f; do
+        SPEC_BUNDLE_BYTES=$((SPEC_BUNDLE_BYTES + $(wc -c < "$f" 2>/dev/null || echo 0)))
+      done < <(find docs -type f -name "*.md" -not -path "docs/plans/*" 2>/dev/null)
+    fi
     ;;
   web|cli|library|service)
     # Each surface's allowlist is enumerated in
@@ -842,6 +875,72 @@ fi
 Log the `$SPEC_ONLY_SKIP` decision to analytics as
 `spec_only_skipped: true | false` when Phase 6 writes the
 analytics entry (see Unit 10).
+
+### 3a-bis) Project-defined subagent install probe
+
+**Load-bearing.** Phase 3c dispatches via project-defined
+`subagent_type: qa-plan-persona-*` / `qa-plan-spec-only-reviewer`.
+If the user has installed the v0.2 skill but not yet copied the
+subagent files into `~/.claude/agents/`, an `Agent` call with one
+of those names will fail HARD before the prose-described fallback
+path can run. That regresses Phase 3 from "v0.1 prompt-only
+fallback works" to "Phase 3 fails entirely", which is worse than
+v0.1.
+
+Probe each subagent file's existence BEFORE dispatch and resolve
+to either the project subagent_type (file present) or
+`general-purpose` (file absent + canonical warning). Carry the
+resolved subagent_type into Phase 3c's Agent calls.
+
+```bash
+# Resolve persona subagent types — file present = use frontmatter-
+# backed enforcement; file absent = fall back to general-purpose
+# with prompt-only tool intent and emit canonical warning per
+# missing file.
+for persona_id in confused-user data-corruptor race-demon prod-saboteur; do
+  agent_file="$HOME/.claude/agents/qa-plan-persona-${persona_id}.md"
+  varname="PERSONA_$(echo "$persona_id" | tr 'a-z-' 'A-Z_')_SUBAGENT_TYPE"
+  if [ -f "$agent_file" ]; then
+    eval "$varname=qa-plan-persona-${persona_id}"
+    eval "PERSONA_${varname#PERSONA_}_FRONTMATTER_BACKED=true"
+  else
+    eval "$varname=general-purpose"
+    eval "PERSONA_${varname#PERSONA_}_FRONTMATTER_BACKED=false"
+    echo "[warning: persona subagent -- qa-plan-persona-${persona_id} not installed at ~/.claude/agents/ -- falling back to general-purpose + prompt-only tool intent, defense-in-depth only]"
+    _qa_plan_record_warning "persona subagent" "qa-plan-persona-${persona_id} not installed at ~/.claude/agents/" "falling back to general-purpose + prompt-only tool intent, defense-in-depth only"
+  fi
+done
+
+# Same probe for the spec-only reviewer (only matters if not skipped
+# by spec-starvation gate above).
+if [ "$SPEC_ONLY_SKIP" != true ]; then
+  agent_file="$HOME/.claude/agents/qa-plan-spec-only-reviewer.md"
+  if [ -f "$agent_file" ]; then
+    SPEC_ONLY_SUBAGENT_TYPE="qa-plan-spec-only-reviewer"
+    SPEC_ONLY_FRONTMATTER_BACKED=true
+  else
+    SPEC_ONLY_SUBAGENT_TYPE="general-purpose"
+    SPEC_ONLY_FRONTMATTER_BACKED=false
+    echo "[warning: spec-only reviewer subagent -- qa-plan-spec-only-reviewer not installed at ~/.claude/agents/ -- falling back to general-purpose + prompt-only tool intent, defense-in-depth only]"
+    _qa_plan_record_warning "spec-only reviewer subagent" "qa-plan-spec-only-reviewer not installed at ~/.claude/agents/" "falling back to general-purpose + prompt-only tool intent, defense-in-depth only"
+  fi
+fi
+```
+
+Reviewer Coverage (Phase 4e) reads `*_FRONTMATTER_BACKED` to
+honestly report enforcement strength per reviewer. When all five
+subagents are installed, Reviewer Coverage states "tool restriction
+enforced via subagent frontmatter (frontmatter-backed)". When one
+or more are missing, it lists each affected reviewer with
+"prompt-only fallback (defense-in-depth)" and the canonical
+warning is preserved in `warnings[]`.
+
+The probe is `[ -f ... ]` against `$HOME/.claude/agents/*.md`. It
+does NOT verify the subagent file's frontmatter is well-formed or
+that `tools:` is present — Claude Code's subagent loader handles
+that. A malformed subagent file will cause a different failure
+mode (Agent call error) which the Phase 3 per-reviewer failure
+handling (Phase 3e) catches as a survivor-mode warning.
 
 ### 3b) Progress emission
 

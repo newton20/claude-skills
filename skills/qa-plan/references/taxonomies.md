@@ -160,13 +160,32 @@ fallback canonical warning.
 | cli           | README usage, `--help`, man pages               | Source, internal tests                  |
 | library       | Public API docs, type signatures (public only)  | Internals, private modules              |
 | service       | OpenAPI schema, user-facing docs                | Service code, DB internals              |
-| claude-skill  | `README.md` skill-table row, `~/.gstack/projects/**/*-design-*.md` | `skills/*/SKILL.md`, `skills/*/references/*`, `docs/plans/*` (impl-shaped) |
+| claude-skill  | `README.md`, `CHANGELOG.md`, `LICENSE`, `CONTRIBUTING.md`, `docs/**` (excluding `docs/plans/`), `~/.gstack/projects/**/*-design-*.md` | `skills/*/SKILL.md`, `skills/*/references/*`, `skills/*/agents/*`, `docs/plans/*` (impl-shaped) |
 
 **claude-skill recursion caveat:** plan docs under `docs/plans/`
 describe IMPL intent (excluded even though they are docs); design
 docs under `~/.gstack/projects/` capture product intent (allowed).
+The `skills/*/agents/*.md` files are subagent prompts — they are
+the impl of the persona's behavior, NOT the spec of the parent
+skill — so they're forbidden too.
+
+**Spec bundle expansion in v0.2.1 (`CHANGELOG`, `LICENSE`,
+`CONTRIBUTING`, `docs/**`):** Unit 3 of v0.2 expanded the
+claude-skill *surface detection* patterns to count documentation
+files (so a `README`-only diff in a skill repo no longer falls
+through to a no-match prompt). The spec/impl boundary above must
+mirror that expansion — otherwise the spec-only reviewer starves
+on a docs-only diff that auto-detected as claude-skill (codex
+pre-merge review of PR #9 surfaced this; v0.2.1 fix). The
+expanded bundle keeps `docs/plans/*` excluded for the same reason
+as before (plan docs are impl-shaped). `docs/dogfood/` is part of
+the spec bundle — dogfood findings ARE product-intent
+documentation about how the skill should behave.
 
 **Spec-starvation gate.** If the allowlist bundle is under 1500
 tokens, Phase 3 skips the spec-only reviewer entirely with a
 canonical warning — below that threshold the reviewer hallucinates
-rather than de-biases.
+rather than de-biases. With the v0.2.1 bundle expansion, a typical
+skill repo (this one) hits ~15-30k tokens of accessible spec
+context (README + CHANGELOG + design docs + dogfood findings) —
+well above the gate.
