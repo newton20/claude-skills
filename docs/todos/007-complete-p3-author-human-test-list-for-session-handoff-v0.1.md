@@ -1,10 +1,11 @@
 ---
-status: in-progress
+status: complete
 priority: p3
 issue_id: "007"
 tags: [qa-plan, eval, calibration, dogfood]
 dependencies: []
 unblocked_by: ["PR #4 — qa-plan v0.1 merged 2026-04-23"]
+closed_by: "v0.3 (2026-04-24) — docs/qa-plans/human-baseline-session-handoff-v0.1.md"
 ---
 
 # Author a human-generated test list for session-handoff v0.1 as eval baseline
@@ -48,6 +49,15 @@ motivated reasoning):
 
 `docs/eval-baselines/session-handoff-v0.1-test-list.md` exists with
 ≥ 15 cases tagged with severity/likelihood/risk-dimension.
+
+**Resolution (2026-04-24, v0.3):** baseline lives at
+`docs/qa-plans/human-baseline-session-handoff-v0.1.md` (path
+chosen for proximity to existing `docs/qa-plans/` artifacts; the
+exit-criterion path was advisory pre-implementation). 20 cases
+(top 10 + 10 supplementary) tagged with severity, likelihood, and
+risk-dimension. Authoring constraints documented in the file
+header: 30-min time box, single-pass read, no tooling access,
+honest-to-the-clock priority cuts.
 
 ## Dependencies
 

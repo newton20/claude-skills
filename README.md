@@ -171,10 +171,10 @@ When review surfaces a non-blocking follow-up, capture it as a todo at `docs/tod
 004-complete-p3-recheck-short-prompt-cap-after-placeholder-lint.md
 005-complete-p2-verify-session-handoff-report-coord-route.md
 006-in-progress-p3-ab-test-qa-plan-vs-one-hop-during-dogfood.md
-007-in-progress-p3-author-human-test-list-for-session-handoff-v0.1.md
+007-complete-p3-author-human-test-list-for-session-handoff-v0.1.md
 ```
 
-Todos 001-005 complete. Todos 006-007 unblocked by `qa-plan` v0.1 merge and now gating on dogfood runs (see `docs/dogfood/001-qa-plan-v0.1-findings.md`).
+Todos 001-005 + 007 complete. TODO 006 (A/B framework) shipped in v0.3; remaining work is two user-driven fresh-session reference runs — see `docs/dogfood/001-qa-plan-vs-one-hop-findings.md` "User-action required" section.
 
 ## Design principles
 

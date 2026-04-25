@@ -156,11 +156,17 @@ fallback canonical warning.
 
 | Surface       | Spec-only reviewer CAN see                      | Spec-only reviewer CANNOT see           |
 |---------------|-------------------------------------------------|-----------------------------------------|
-| web           | PRD, user stories, mockups, acceptance criteria | Source, UI implementation, tests        |
-| cli           | README usage, `--help`, man pages               | Source, internal tests                  |
-| library       | Public API docs, type signatures (public only)  | Internals, private modules              |
-| service       | OpenAPI schema, user-facing docs                | Service code, DB internals              |
-| claude-skill  | `README.md`, `CHANGELOG.md`, `LICENSE`, `CONTRIBUTING.md`, `docs/**` (excluding `docs/plans/`), `~/.gstack/projects/**/*-design-*.md` | `skills/*/SKILL.md`, `skills/*/references/*`, `skills/*/agents/*`, `docs/plans/*` (impl-shaped) |
+| web           | Common base (`README*`, `CHANGELOG*`, `LICENSE*`, `CONTRIBUTING.md`, `docs/**` excluding `docs/plans/`); PRDs / user stories / mockups / acceptance criteria typically live under `docs/**` and are captured by the common base | Source, UI implementation, tests, anything under `src/`, `app/`, `pages/`, `components/` |
+| cli           | Common base + `man/**`                          | Source under `bin/`, `cmd/`, `cli/`, internal tests |
+| library       | Common base + `types/**/*.d.ts`, `typings/**/*.d.ts` (best-effort: cannot perfectly distinguish public from internal types in arbitrary repos; the dedup gate is the safety net) | Source under `src/`, `lib/`, `pkg/`, internals, private modules, `src/**/*.d.ts` (impl-adjacent) |
+| service       | Common base + `openapi.{yaml,yml,json}`, `swagger.{yaml,yml,json}`, `api/openapi.*`, `spec/openapi.*` | Service code, DB internals, migrations, anything under `src/`, `routes/`, `migrations/` |
+| claude-skill  | Common base + `~/.gstack/projects/**/*-design-*.md` | `skills/*/SKILL.md`, `skills/*/references/*`, `skills/*/agents/*`, `docs/plans/*` (impl-shaped) |
+
+**Common base bundle** (all 5 surfaces): `README.md` / `README.rst`
+/ `README.txt`, `CHANGELOG.md` / `CHANGELOG.rst`, `LICENSE` /
+`LICENSE.md`, `CONTRIBUTING.md`, plus `docs/**` (`*.md`, `*.rst`,
+`*.txt`) excluding `docs/plans/**` (impl-shaped). Per-surface
+extras stack on this base.
 
 **claude-skill recursion caveat:** plan docs under `docs/plans/`
 describe IMPL intent (excluded even though they are docs); design
@@ -182,10 +188,28 @@ as before (plan docs are impl-shaped). `docs/dogfood/` is part of
 the spec bundle — dogfood findings ARE product-intent
 documentation about how the skill should behave.
 
+**Per-surface bundle implementation in v0.3 (web/cli/library/service):**
+Run #4 codex review (sev×lik=16) caught that the v0.2.2 Phase 3a
+case statement set `SPEC_BUNDLE_IMPL_STATUS="not-implemented"` for
+every non-`claude-skill` surface — i.e., the spec-only reviewer
+was *always skipped* on web/cli/library/service runs with a
+canonical "v0.3 implements per-surface bundles" warning. v0.3
+ships the implementation: the common base (`README`, `CHANGELOG`,
+`LICENSE`, `CONTRIBUTING`, `docs/**` minus `docs/plans/**`)
+applies to every surface, with per-surface extras stacked above
+(OpenAPI for service, `man/**` for cli, `types/**/*.d.ts` for
+library, `~/.gstack/projects/**/*-design-*.md` for claude-skill,
+nothing extra for web). The `SPEC_BUNDLE_IMPL_STATUS` variable
+and its "not-implemented" branch were removed; reaching the
+starvation-gate warning now genuinely means "this repo lacks docs
+at the standard paths," not "we haven't implemented this surface."
+
 **Spec-starvation gate.** If the allowlist bundle is under 1500
 tokens, Phase 3 skips the spec-only reviewer entirely with a
 canonical warning — below that threshold the reviewer hallucinates
-rather than de-biases. With the v0.2.1 bundle expansion, a typical
-skill repo (this one) hits ~15-30k tokens of accessible spec
-context (README + CHANGELOG + design docs + dogfood findings) —
-well above the gate.
+rather than de-biases. With the v0.3 per-surface implementation,
+a service repo with even a small `openapi.yaml` plus a `README`
+typically clears the gate; a library with `types/**/*.d.ts` or a
+docs site with substantial `docs/**` content does too. Repos with
+neither structured docs nor a populated allowlist target will
+honestly skip — the warning text now reflects that.

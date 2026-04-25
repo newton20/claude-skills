@@ -812,3 +812,66 @@ Beyond the original v0.2 → v0.3 transitions captured above, Run
   retains `status: DRAFT` while primary is REVIEWED; analytics
   records `outcome: success` AND divergence in `warnings[]` under
   "mirror update". Run #4 Data Corruptor case at sev×lik=16.
+
+---
+
+## v0.3 outcome — backlog cleared, eval baseline + A/B framework
+
+**Scope:** the three Run #4 backlog items + TODO 007 (human
+baseline) + TODO 006 (A/B framework) shipped on a single feature
+branch (`feat/qa-plan-v0.3`). Three SKILL.md surgical edits, one
+references/taxonomies.md update, two new docs artifacts.
+
+### What shipped
+
+| Item | What changed | Exit criterion met |
+|------|--------------|--------------------|
+| Per-surface spec bundles | `skills/qa-plan/SKILL.md` Phase 3a rewritten: common base bundle (`README*`, `CHANGELOG*`, `LICENSE*`, `CONTRIBUTING.md`, `docs/**` minus `docs/plans/**`) applies to every surface; per-surface extras stack (OpenAPI for service, `man/**` for cli, `types/**/*.d.ts` for library, design docs for claude-skill, none for web). `SPEC_BUNDLE_IMPL_STATUS` variable + "not-implemented" branch removed; reaching the starvation-gate warning now genuinely means spec-starved, not unimplemented. `references/taxonomies.md` "Spec/impl boundary" table updated to reflect the implemented allowlists per surface. | A `/qa-plan` run on a `service` repo with an `openapi.yaml` + `README` clears the 1500-token starvation gate and dispatches the spec-only reviewer. The "v0.3 implements per-surface bundles" canonical warning is no longer emitted on any surface. |
+| Cross-machine handoff fallback | Phase 5c instructions block extended with explicit fallback chain: `plan_path` → `repo_path` → embedded `top_10`. Phase 5e block's `instructions:` field carries the same prose. The fresh QA agent reports back which fallback step it used (`plan_resolved: plan_path | repo_path | embedded_top_10`). | Run #4 Top-10 case #9 (sev×lik=16, source: Race Demon + Data Corruptor) is structurally addressed: QA agent on session B now has a deterministic fallback chain rather than silently treating an unreachable absolute path as "no plan exists." |
+| Phase 4g mirror-cp warning | `cp` failure after status flip emits a warning that explicitly names the divergence: "mirror retains `status: DRAFT` while primary at $PLAN_PATH is `status: REVIEWED`". The `_qa_plan_record_warning` reason field carries the same disambiguating text so analytics `warnings[]` surfaces the field-level divergence, not just "stale". | Run #4 Top-10 case #10 (sev×lik=16, source: Data Corruptor) addressed at the warning-text layer. The `outcome: success` + warnings[] entry pattern documented in `references/analytics-schema.md` now produces a self-explaining audit trail when the divergence happens. |
+| TODO 007 human baseline | `docs/qa-plans/human-baseline-session-handoff-v0.1.md` authored: 30-min time-boxed, single-pass read of session-handoff v0.1, 20 cases listed (Top-10 + 10 supplementary) with severity / likelihood / risk-dimension tags. Authoring constraints disclosed in the file header. | Exit criterion of `≥ 15 cases tagged with severity/likelihood/risk-dimension` met (20 cases ≥ 15). TODO 007 marked complete. |
+| TODO 006 A/B framework | `docs/dogfood/001-qa-plan-vs-one-hop-findings.md` framework doc: methodology, comparison tables (TO BE FILLED), pre-comparison observations from the 4 self-review reference runs (Codex Criterion 4 lock-in, self-catching evidence, persona axis coverage, spec-only top-of-Top-10 placement), and verbatim user-action commands for the two missing data points (`/qa-plan` Run #5 against session-handoff v0.1 + one-hop alternative). | Framework + analysis of available data complete. TODO 006 stays in-progress until user-driven fresh-session runs collect the missing two reference data points. |
+
+### Files changed
+
+```
+modified:   skills/qa-plan/SKILL.md
+modified:   skills/qa-plan/references/taxonomies.md
+modified:   docs/dogfood/001-qa-plan-v0.1-findings.md   (this section)
+modified:   docs/todos/006-in-progress-p3-ab-test-qa-plan-vs-one-hop-during-dogfood.md
+renamed:    docs/todos/007-in-progress-...md → docs/todos/007-complete-...md
+new file:   docs/qa-plans/human-baseline-session-handoff-v0.1.md
+new file:   docs/dogfood/001-qa-plan-vs-one-hop-findings.md
+```
+
+### v0.3 in-session verification
+
+- **Bash syntax sweep** (IV1 equivalent): 26/26 `` ```bash ``-fenced
+  blocks in `skills/qa-plan/SKILL.md` pass `bash -n`.
+- **Surface coverage in Phase 3a**: 5 case branches (claude-skill,
+  service, cli, library, web) all produce a defined
+  `SPEC_BUNDLE_BYTES` value before the gate. The default fall-
+  through (no extras for an unrecognized surface) inherits the
+  common base.
+- **Warning text alignment**: Phase 4g `echo` and the paired
+  `_qa_plan_record_warning` call both name the
+  `status: DRAFT` / `status: REVIEWED` divergence verbatim.
+- **`taxonomies.md` and `SKILL.md` agree**: the per-surface
+  table in `taxonomies.md` enumerates the same paths the
+  `SKILL.md` case-statement resolves.
+
+### v0.3 backlog NOT addressed (deferred to v0.4+)
+
+- **TODO 006 head-to-head data collection** — requires user-
+  driven fresh sessions on the user's machine; framework done,
+  data collection remains.
+- **DV3 full probe re-run** against v0.3 — probe corpus did not
+  change; v0.2.2 already addressed Probe 7's silent-absorption
+  finding. A full re-run would only confirm.
+- **`docs/dogfood/RUNBOOK-dv1-qa-plan-v0.1.md` v0.3 update** —
+  RUNBOOK targets v0.1 specifically; v0.3 verification used the
+  in-session bash-syntax + path-alignment checks above. A v0.3
+  RUNBOOK is not load-bearing.
+
+**v0.3 backlog (any future findings):** populate as runs surface
+new gaps. None known at this point.
