@@ -121,3 +121,44 @@ Empty array `[]` = no warnings emitted that run (clean execution).
 v0.2 evolution: add `codex_value_score` (Criterion 4 pass rule
 result as integer) when `scripts/codex-value-check.sh` is automated
 (currently manual; cut from v0.1 per simplicity review).
+
+---
+
+## Recovery — repairing pre-PR-#6 pretty-printed entries
+
+If you installed `/qa-plan` before PR #6 landed (merge commit
+`d3e7609`, 2026-04-24), your local
+`~/.gstack/analytics/skill-usage.jsonl` likely contains
+pretty-printed multi-line JSON — the v0.1 shipped prose used
+`jq -n` instead of `jq -nc`, so every pre-fix entry spans roughly
+14 lines. That breaks the one-object-per-line JSONL contract every
+consumer query in this doc assumes: `jq -r 'select(.skill == "qa-plan")'`
+rejects the file, not per-entry.
+
+**When to run the recovery:** after upgrading from a pre-PR-#6
+install and before running any `jq` query against the analytics
+file for the first time. The 238 pre-fix entries observed on the
+dogfood machine were the discovery case.
+
+**Recovery one-liner** (slurp the pretty-printed stream, re-emit
+one compact object per line):
+
+```bash
+jq -s -c '.[]' ~/.gstack/analytics/skill-usage.jsonl \
+  > ~/.gstack/analytics/skill-usage-repaired.jsonl
+mv ~/.gstack/analytics/skill-usage-repaired.jsonl \
+   ~/.gstack/analytics/skill-usage.jsonl
+```
+
+`jq -s` slurps the entire file into one array; `-c '.[]'` re-emits
+each element as a compact single-line object. Back up before
+overwriting if you care about the original pretty form for any
+reason (most consumers do not).
+
+**How to detect the state without repairing:** if
+`jq -c . ~/.gstack/analytics/skill-usage.jsonl >/dev/null 2>&1`
+returns non-zero, the file has at least one malformed line and
+benefits from the repair. Post-PR-#6 entries are already compact
+and the slurp-and-re-emit is idempotent against them, so running
+the recovery on an already-clean file is safe (produces the same
+output, byte-for-byte, modulo `jq`'s key-ordering).

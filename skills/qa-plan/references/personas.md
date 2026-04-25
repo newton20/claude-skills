@@ -1,17 +1,31 @@
 # Personas (qa-plan)
 
-Four adversarial review personas for Phase 3. Each runs as a
-`general-purpose` Claude Code subagent with **tool-intent** for
-`Bash`, `Read`, `Grep` expressed in the prompt (not enforced via
-the Agent tool — see SKILL.md Phase 7a tool-restriction honesty
-note) and produces markdown in the same output shape. The shared
-skeleton below keeps the output contract DRY; each persona section
-below it prepends a unique attack-vector block to that skeleton.
+Four adversarial review personas for Phase 3. As of v0.2, each
+runs as a **project-defined Claude Code subagent** whose
+frontmatter at `skills/qa-plan/agents/qa-plan-persona-*.md`
+declares `tools: [Bash, Read, Grep]`. The subagent layer enforces
+the tool restriction at dispatch time — the persona cannot invoke
+`Edit`, `Write`, or any other tool outside its allowed list. Each
+persona produces markdown in the same output shape (defined in
+the subagent file's body + summarized below).
 
-A fifth reviewer (spec-only gap finder) is authored inline in
-SKILL.md Phase 3 (Unit 7b), not here — it has different tool
-intent (`Read`, `Grep` only — no `Bash`) and a different prompt
-shape. This file covers only the 4 adversarial personas.
+A fifth reviewer (spec-only gap finder) lives in its own subagent
+file at `skills/qa-plan/agents/qa-plan-spec-only-reviewer.md` with
+`tools: [Read, Grep]` — no `Bash`. Its prompt template is in
+SKILL.md Phase 3 (Unit 7b); it has a different allowed-paths /
+forbidden-paths contract from the personas and is treated
+separately.
+
+The shared skeleton below documents the output contract DRY for
+readers; the active copy lives in each persona's subagent file.
+Edit those files to change persona behavior; this file is the
+reference index, not the dispatch source.
+
+**v0.1 compatibility fallback.** If a user has the skill installed
+but not the project-defined subagent files at `~/.claude/agents/`,
+Phase 3 dispatch falls back to `subagent_type: "general-purpose"`
+with prompt-level tool-intent text and emits a canonical warning.
+Reviewer Coverage discloses which path each persona used per run.
 
 Regression Hunter was considered for v0.1 and deferred to v0.2
 (git-log archaeology produces signal:noise below the bar until we
@@ -144,16 +158,25 @@ Attack vector block:
   response together with the spec-only gap reviewer (5 Agent calls
   in one block). Sequential dispatch breaks parallelism; see
   `anthropics/claude-code#29181` for the 1-of-N hallucination bug.
-- Express tool intent in the persona prompt preamble: "You have
-  access to Bash, Read, and Grep. Do not attempt to use other
-  tools." **Claude Code's `Agent` tool has no `tools:` parameter**
-  — tool restriction via the call is not possible with the vanilla
-  `general-purpose` subagent_type. Prose/intent is best-effort
-  (defense-in-depth, not hard sandbox); the spec-only reviewer
-  uses "Read and Grep only — no Bash" as its tool-intent text.
-  A project-defined subagent with `tools:` in frontmatter is the
-  v0.2 path to actual enforcement (see SKILL.md Phase 7a for the
-  honesty note + v0.2 option).
+- Per persona, use the project-defined `subagent_type`:
+  `qa-plan-persona-confused-user`, `qa-plan-persona-data-corruptor`,
+  `qa-plan-persona-race-demon`, `qa-plan-persona-prod-saboteur`.
+  Each subagent file at `skills/qa-plan/agents/` declares
+  `tools: [Bash, Read, Grep]` in frontmatter, which the Claude
+  Code subagent layer enforces at dispatch. The persona cannot
+  invoke `Edit`, `Write`, or any other tool — the restriction is
+  structural, not prompt-level.
+- Per-call `prompt` field supplies the task context (DRAFT plan
+  path, surface, diff stat) plus a redundant prompt-injection
+  preamble. The persona's identity, attack vectors, tool access,
+  and output contract live in the subagent file body and do NOT
+  need to be repeated in the per-call prompt. See SKILL.md Phase
+  3c for the full per-call prompt template.
+- If the subagent file is not installed at
+  `~/.claude/agents/qa-plan-persona-{name}.md`, fall back to
+  `subagent_type: "general-purpose"` with prompt-level tool
+  intent and emit the canonical missing-subagent warning:
+  `[warning: persona subagent -- qa-plan-persona-{name} not installed at ~/.claude/agents/ -- falling back to general-purpose + prompt-only tool intent, defense-in-depth only]`.
 - Count received outputs after dispatch. If fewer than the
   expected N return, emit the canonical
   `[warning: parallel dispatch -- expected {N} -- received {M} -- survivors only]`

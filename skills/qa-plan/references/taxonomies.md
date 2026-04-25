@@ -26,9 +26,25 @@ not duplicate between the planner and the reviewer prompts.
 | `lib/*`, `src/lib/*`, `pkg/*`                             | library          |
 | `api/*`, `routes/*`, `migrations/*`, `Docker*`            | service          |
 | `skills/*/SKILL.md`, `~/.claude/skills/*`                 | claude-skill     |
+| `README*`, `CHANGELOG*`, `LICENSE*`, `CONTRIBUTING*`, `docs/**` | claude-skill (only when `skills/*/SKILL.md` exists in the repo tree — these files document skills in skill-repo context; on non-skill repos they do NOT count for any surface and the fallback in Phase 1g fires) |
 
 Ties: the surface with the most matches wins. If two surfaces tie,
-Phase 1 asks the user to pick.
+Phase 1 asks the user to pick. If every surface has zero matches
+(e.g., a README-only diff in a non-skill repo), Phase 1g's
+no-match fallback asks the user to pick manually or abort — see
+SKILL.md Phase 1g for the fallback prose.
+
+**Why documentation files fold into `claude-skill` only in skill
+repos:** in a claude-skills monorepo, the top-level `README.md`
+(plus `CHANGELOG.md`, `LICENSE`, `CONTRIBUTING.md`, `docs/**`) is
+part of the user-facing surface of the shipped skills — changes
+there get the same axis coverage (slot filling, artifact shape,
+phase-boundary adherence, adversarial-probe alignment) that
+`SKILL.md` changes do. In a non-skill repo, the same files
+describe whatever the repo's primary surface is, and attributing
+them to `claude-skill` would be wrong. The `skills/*/SKILL.md`
+presence probe is a cheap, deterministic way to distinguish the
+two cases.
 
 ---
 
@@ -127,13 +143,16 @@ over single-source cases (pre-validated signal).
 The Phase 3 spec-only reviewer reads ONLY the spec bundle for the
 detected surface and outputs test cases the DRAFT plan MISSES from
 a black-box viewpoint. The allowlist / denylist below is enforced
-via (a) tool-intent prose in the reviewer prompt ("Read and Grep
-only, no Bash" — Claude Code's Agent tool has no `tools:` param,
-so this is prompt-level best-effort, NOT runtime-enforced) and (b)
-explicit forbidden-paths prose. Defense-in-depth, not a hard
-sandbox — the reviewer is an LLM and may still peek; Reviewer
-Coverage discloses this caveat. See SKILL.md Phase 7b for the
-tool-restriction honesty note.
+via (a) the project-defined `qa-plan-spec-only-reviewer` subagent's
+`tools: [Read, Grep]` frontmatter — `Bash` is denied at the
+Claude Code subagent layer, not just by prompt intent — and (b)
+explicit forbidden-paths prose in the per-call prompt that scopes
+`Read` and `Grep` to the allowed paths. When the subagent file is
+not installed at `~/.claude/agents/qa-plan-spec-only-reviewer.md`,
+dispatch falls back to `general-purpose` with prompt-only tool
+intent and Reviewer Coverage records the degraded enforcement.
+See SKILL.md Phase 7b for the full enforcement story and the
+fallback canonical warning.
 
 | Surface       | Spec-only reviewer CAN see                      | Spec-only reviewer CANNOT see           |
 |---------------|-------------------------------------------------|-----------------------------------------|
@@ -141,13 +160,32 @@ tool-restriction honesty note.
 | cli           | README usage, `--help`, man pages               | Source, internal tests                  |
 | library       | Public API docs, type signatures (public only)  | Internals, private modules              |
 | service       | OpenAPI schema, user-facing docs                | Service code, DB internals              |
-| claude-skill  | `README.md` skill-table row, `~/.gstack/projects/**/*-design-*.md` | `skills/*/SKILL.md`, `skills/*/references/*`, `docs/plans/*` (impl-shaped) |
+| claude-skill  | `README.md`, `CHANGELOG.md`, `LICENSE`, `CONTRIBUTING.md`, `docs/**` (excluding `docs/plans/`), `~/.gstack/projects/**/*-design-*.md` | `skills/*/SKILL.md`, `skills/*/references/*`, `skills/*/agents/*`, `docs/plans/*` (impl-shaped) |
 
 **claude-skill recursion caveat:** plan docs under `docs/plans/`
 describe IMPL intent (excluded even though they are docs); design
 docs under `~/.gstack/projects/` capture product intent (allowed).
+The `skills/*/agents/*.md` files are subagent prompts — they are
+the impl of the persona's behavior, NOT the spec of the parent
+skill — so they're forbidden too.
+
+**Spec bundle expansion in v0.2.1 (`CHANGELOG`, `LICENSE`,
+`CONTRIBUTING`, `docs/**`):** Unit 3 of v0.2 expanded the
+claude-skill *surface detection* patterns to count documentation
+files (so a `README`-only diff in a skill repo no longer falls
+through to a no-match prompt). The spec/impl boundary above must
+mirror that expansion — otherwise the spec-only reviewer starves
+on a docs-only diff that auto-detected as claude-skill (codex
+pre-merge review of PR #9 surfaced this; v0.2.1 fix). The
+expanded bundle keeps `docs/plans/*` excluded for the same reason
+as before (plan docs are impl-shaped). `docs/dogfood/` is part of
+the spec bundle — dogfood findings ARE product-intent
+documentation about how the skill should behave.
 
 **Spec-starvation gate.** If the allowlist bundle is under 1500
 tokens, Phase 3 skips the spec-only reviewer entirely with a
 canonical warning — below that threshold the reviewer hallucinates
-rather than de-biases.
+rather than de-biases. With the v0.2.1 bundle expansion, a typical
+skill repo (this one) hits ~15-30k tokens of accessible spec
+context (README + CHANGELOG + design docs + dogfood findings) —
+well above the gate.
