@@ -837,53 +837,89 @@ characters per token for English prose; plain enough for a
 threshold gate).
 
 ```bash
-# Per-surface spec-bundle path resolution (simplified example for
-# claude-skill surface; full resolution lives in the surface-specific
-# allowlist prose).
+# Per-surface spec-bundle path resolution. v0.3 implements all 5
+# surfaces; the common base (README/CHANGELOG/LICENSE/CONTRIBUTING +
+# docs/** minus docs/plans/**) applies to every surface, with
+# surface-specific additions stacked on top. The starvation gate
+# below decides whether the resolved bundle is substantial enough
+# to dispatch the spec-only reviewer.
 SPEC_BUNDLE_BYTES=0
-# Run #4 codex finding (2026-04-25): default to "implemented"; the
-# unimpl-surface case branch flips this to "not-implemented" so the
-# starvation gate below can emit an honest warning instead of silently
-# skipping the spec-only reviewer with a misleading "0 tokens" reason.
-SPEC_BUNDLE_IMPL_STATUS="implemented"
+
+_qa_plan_add_to_bundle() {
+  local f="$1"
+  [ -f "$f" ] && SPEC_BUNDLE_BYTES=$((SPEC_BUNDLE_BYTES + $(wc -c < "$f" 2>/dev/null || echo 0)))
+}
+
+# Common base bundle — every surface treats these as spec-shaped per
+# references/taxonomies.md "Spec/impl boundary" allowlist. README and
+# CHANGELOG variants cover the common-case repo layouts.
+for f in README.md README.rst README.txt CHANGELOG.md CHANGELOG.rst LICENSE LICENSE.md CONTRIBUTING.md; do
+  _qa_plan_add_to_bundle "$f"
+done
+
+# docs/** but excluding docs/plans/ (impl-shaped). Use find so missing
+# dirs are silent. Match common doc extensions.
+if [ -d docs ]; then
+  while IFS= read -r f; do
+    _qa_plan_add_to_bundle "$f"
+  done < <(find docs -type f \( -name "*.md" -o -name "*.rst" -o -name "*.txt" \) -not -path "docs/plans/*" 2>/dev/null)
+fi
+
+# Surface-specific additions stacked on the common base.
 case "$SURFACE" in
   claude-skill)
-    # Expanded in v0.2.1 to mirror Unit 3's surface-detection
-    # additions. Documentation files are claude-skill spec; plan
-    # docs (docs/plans/) and subagent files (skills/*/agents/) are
-    # impl-shaped and explicitly excluded.
-    for f in README.md CHANGELOG.md LICENSE CONTRIBUTING.md "$HOME/.gstack/projects/$SLUG"/*-design-*.md; do
-      [ -f "$f" ] && SPEC_BUNDLE_BYTES=$((SPEC_BUNDLE_BYTES + $(wc -c < "$f" 2>/dev/null || echo 0)))
+    # Skill design docs live under ~/.gstack/projects/$SLUG.
+    for f in "$HOME/.gstack/projects/$SLUG"/*-design-*.md; do
+      _qa_plan_add_to_bundle "$f"
     done
-    # docs/** but excluding docs/plans/ (impl-shaped). Use find so
-    # missing dirs are silent.
-    if [ -d docs ]; then
+    ;;
+  service)
+    # OpenAPI / Swagger schemas at the most-common repo locations.
+    for f in openapi.yaml openapi.yml openapi.json \
+             swagger.yaml swagger.yml swagger.json \
+             api/openapi.yaml api/openapi.yml api/openapi.json \
+             spec/openapi.yaml spec/openapi.yml spec/openapi.json; do
+      _qa_plan_add_to_bundle "$f"
+    done
+    ;;
+  cli)
+    # Man pages, if shipped in-repo.
+    if [ -d man ]; then
       while IFS= read -r f; do
-        SPEC_BUNDLE_BYTES=$((SPEC_BUNDLE_BYTES + $(wc -c < "$f" 2>/dev/null || echo 0)))
-      done < <(find docs -type f -name "*.md" -not -path "docs/plans/*" 2>/dev/null)
+        _qa_plan_add_to_bundle "$f"
+      done < <(find man -type f 2>/dev/null)
     fi
     ;;
-  web|cli|library|service)
-    # Run #4 codex finding (2026-04-25): per-surface bundle resolution
-    # is not implemented in v0.2.2; v0.3 implements the allowlists
-    # enumerated in references/taxonomies.md. Mark the status so the
-    # gate below emits an honest warning rather than the misleading
-    # "0 tokens" starvation message.
-    SPEC_BUNDLE_IMPL_STATUS="not-implemented"
+  library)
+    # Public type declarations under types/ or typings/. Per the
+    # taxonomies.md "public only" caveat, we cannot reliably exclude
+    # internal types in arbitrary repos — the dedup gate is the
+    # safety net. Files under src/**/*.d.ts are NOT included
+    # (impl-shaped path).
+    if [ -d types ] || [ -d typings ]; then
+      while IFS= read -r f; do
+        _qa_plan_add_to_bundle "$f"
+      done < <(find types typings -type f -name "*.d.ts" 2>/dev/null)
+    fi
+    ;;
+  web)
+    # No web-specific extras beyond the common base. PRDs / user
+    # stories / mockup specs typically live under docs/** and are
+    # already captured.
     ;;
 esac
+
 SPEC_BUNDLE_TOKENS=$((SPEC_BUNDLE_BYTES / 4))
 SPEC_ONLY_THRESHOLD=1500
-if [ "$SPEC_BUNDLE_IMPL_STATUS" = "not-implemented" ]; then
-  # Run #4 codex finding (2026-04-25): honest skip -- the cause is
-  # missing v0.2.2 implementation, not genuine spec starvation.
+if [ "$SPEC_BUNDLE_TOKENS" -lt "$SPEC_ONLY_THRESHOLD" ]; then
+  # Genuine spec-starvation skip: the resolved bundle is below the
+  # threshold under which the spec-only reviewer hallucinates rather
+  # than de-biases. v0.3 implements all 5 surfaces; reaching this
+  # branch means the repo genuinely lacks documentation files at the
+  # standard paths the allowlist resolves, NOT a missing implementation.
   SPEC_ONLY_SKIP=true
-  echo "[warning: spec-only reviewer -- spec bundle resolution not implemented for $SURFACE surface in v0.2.2 -- skipping; v0.3 implements per-surface bundles]"
-  _qa_plan_record_warning "spec-only reviewer" "spec bundle resolution not implemented for $SURFACE surface in v0.2.2" "skipping; v0.3 implements per-surface bundles"
-elif [ "$SPEC_BUNDLE_TOKENS" -lt "$SPEC_ONLY_THRESHOLD" ]; then
-  SPEC_ONLY_SKIP=true
-  echo "[warning: spec-only reviewer -- insufficient spec context ($SPEC_BUNDLE_TOKENS tokens under $SPEC_ONLY_THRESHOLD threshold) -- skipping, relying on impl-aware draft + personas + codex for coverage]"
-  _qa_plan_record_warning "spec-only reviewer" "insufficient spec context ($SPEC_BUNDLE_TOKENS tokens under $SPEC_ONLY_THRESHOLD threshold)" "skipping, relying on impl-aware draft + personas + codex for coverage"
+  echo "[warning: spec-only reviewer -- insufficient spec context ($SPEC_BUNDLE_TOKENS tokens under $SPEC_ONLY_THRESHOLD threshold for $SURFACE surface) -- skipping, relying on impl-aware draft + personas + codex for coverage]"
+  _qa_plan_record_warning "spec-only reviewer" "insufficient spec context ($SPEC_BUNDLE_TOKENS tokens under $SPEC_ONLY_THRESHOLD threshold for $SURFACE surface)" "skipping, relying on impl-aware draft + personas + codex for coverage"
 else
   SPEC_ONLY_SKIP=false
 fi
@@ -1611,8 +1647,16 @@ REVIEWED file to the same mirror path (overwrite):
 ```bash
 if [ -n "$MIRROR_PATH" ] && [ -d "$(dirname "$MIRROR_PATH")" ]; then
   if ! cp "$PLAN_PATH" "$MIRROR_PATH" 2>/dev/null; then
-    echo "[warning: mirror update -- cp to $MIRROR_PATH failed -- mirror now stale; REVIEWED plan is authoritative at $PLAN_PATH]"
-    _qa_plan_record_warning "mirror update" "cp to $MIRROR_PATH failed" "mirror now stale; REVIEWED plan is authoritative at $PLAN_PATH"
+    # Run #4 Data Corruptor finding (sev×lik=16, 2026-04-25, fixed
+    # in v0.3): a cp failure here happens AFTER Phase 4f has already
+    # flipped the primary's frontmatter to status: REVIEWED. The
+    # mirror still carries status: DRAFT — a downstream reader of
+    # the mirror could mistake it for the authoritative REVIEWED
+    # plan. The warning text must surface that field-level
+    # divergence so analytics warnings[] disambiguates this from
+    # "mirror not yet written" or "primary write failed".
+    echo "[warning: mirror update -- cp to $MIRROR_PATH failed AFTER Phase 4f status flip; mirror retains status: DRAFT while primary at $PLAN_PATH is status: REVIEWED -- treat $PLAN_PATH as the only authoritative REVIEWED copy until the mirror is refreshed]"
+    _qa_plan_record_warning "mirror update" "cp to $MIRROR_PATH failed AFTER Phase 4f status flip — mirror retains status: DRAFT while primary at $PLAN_PATH is status: REVIEWED" "treat $PLAN_PATH as the only authoritative REVIEWED copy until the mirror is refreshed"
   fi
 fi
 ```
@@ -1661,18 +1705,43 @@ The embedded Top-10 cases (plain text descriptions, not anchor
 links) let the fresh QA session start working even when the plan
 file is unreachable (different machine, disk locked, etc.).
 
-### 5c) QA-side self-refuse instruction
+### 5c) QA-side self-refuse + plan-resolution fallback instructions
 
 Include the following prose inside the `<qa-plan-handoff>` block
 as an `instructions:` field. The fresh QA agent reads this as
-part of the handoff:
+part of the handoff. The block carries TWO instructions: the
+same-session refuse contract, then the cross-machine plan-
+resolution fallback chain.
 
-> *"If you are the same Claude context that just authored this
-> plan (i.e., you see in-context evidence that `/qa-plan` ran in
-> THIS session), refuse to execute. Respond: 'Fresh-session
-> handoff required — please paste this in a NEW Claude Code
-> window.' This preserves the context-separation property
-> `/qa-plan` depends on."*
+> *"**Same-session refuse:** If you are the same Claude context
+> that just authored this plan (i.e., you see in-context evidence
+> that `/qa-plan` ran in THIS session), refuse to execute.
+> Respond: 'Fresh-session handoff required — please paste this in
+> a NEW Claude Code window.' This preserves the context-separation
+> property `/qa-plan` depends on.*
+>
+> ***Plan-resolution fallback chain (cross-machine paste):***
+> *1. Try reading `plan_path` (absolute). If readable, use it as
+>    the authoritative plan and report the resolution path back as
+>    `plan_resolved: plan_path` in your `report coord`.*
+> *2. If `plan_path` is unreachable (different machine, disk
+>    locked, path does not exist on this filesystem), try
+>    `repo_path` (relative to your current working directory). If
+>    `repo_path` resolves to a file in the local checkout, use it
+>    and report `plan_resolved: repo_path`.*
+> *3. If neither path is reachable, work from the embedded
+>    `top_10` list above. The Top-10 cases are by design portable
+>    — you can execute the must-pass cases from the descriptions
+>    alone. Report `plan_resolved: embedded_top_10`. Note in your
+>    report that you worked from the embedded Top-10 only; the
+>    coord agent uses this signal to decide whether to re-author
+>    the plan from authoritative paths.*
+>
+> ***Never silently treat an unreachable `plan_path` as "no plan
+> exists".*** *Always log which fallback step you used so the
+> coord side can distinguish "QA agent followed the plan we
+> wrote" from "QA agent worked off the portable Top-10 because
+> the plan files were unreachable on this machine."*"
 
 ### 5d) Verbatim fresh-session warning (user-facing)
 
@@ -1700,11 +1769,29 @@ top_10:
   ...
   - <top-10 case description 10>
 instructions: |
-  If you are the same Claude context that just authored this plan
-  (i.e., you see in-context evidence that /qa-plan ran in THIS
-  session), refuse to execute. Respond: "Fresh-session handoff
-  required — please paste this in a NEW Claude Code window."
-  This preserves the context-separation property /qa-plan depends on.
+  Same-session refuse: If you are the same Claude context that just
+  authored this plan (i.e., you see in-context evidence that
+  /qa-plan ran in THIS session), refuse to execute. Respond:
+  "Fresh-session handoff required — please paste this in a NEW
+  Claude Code window." This preserves the context-separation
+  property /qa-plan depends on.
+
+  Plan-resolution fallback chain (cross-machine paste):
+  1. Try reading plan_path (absolute). If readable, use it and
+     report plan_resolved: plan_path in your report coord.
+  2. If plan_path is unreachable (different machine / disk locked /
+     path not on this filesystem), try repo_path (relative to your
+     current working directory). If repo_path resolves to a file
+     in the local checkout, use it and report plan_resolved: repo_path.
+  3. If neither path is reachable, work from the embedded top_10
+     list above. The Top-10 cases are portable; execute from the
+     descriptions alone. Report plan_resolved: embedded_top_10 and
+     note in your report that you worked from embedded Top-10 only —
+     the coord agent uses this signal to decide whether to re-author
+     the plan from authoritative paths.
+
+  Never silently treat an unreachable plan_path as "no plan exists".
+  Always log which fallback step you used.
 </qa-plan-handoff>
 ```
 

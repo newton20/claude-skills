@@ -52,6 +52,22 @@ doc, `session-handoff` v0.1 branch as target):
 A `docs/dogfood/` artifact with concrete comparison numbers + a v0.2
 decision: keep /qa-plan, simplify, or retire.
 
+**Resolution status (2026-04-24, v0.3):** framework + analysis
+complete at `docs/dogfood/001-qa-plan-vs-one-hop-findings.md`.
+Two reference data points still need user-driven fresh-session
+runs (cannot be spawned from any single Claude Code session
+without losing the context-separation property):
+
+1. `/qa-plan` Run #5 against session-handoff v0.1 endpoint
+   (commit `d70403e`). The 4 existing reference runs target
+   `/qa-plan` itself (self-review), not session-handoff.
+2. The one-hop alternative against the same target.
+
+Both run instructions captured verbatim in the findings doc
+under "User-action required to complete the A/B". TODO stays
+**in-progress** until the tables fill in and the v0.2-or-later
+keep/retire decision lands.
+
 ## Dependencies
 
 - TODO 005 (verify report-route) must be done first, since both arms of
